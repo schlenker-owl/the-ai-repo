@@ -1,0 +1,57 @@
+[project]
+name = "theairepo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Aaron Schlenker", email = "aschlenk3@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "accelerate>=1.11.0",
+    "datasets>=4.3.0",
+    "evaluate>=0.4.6",
+    "hydra-core>=1.3.2",
+    "omegaconf>=2.3.0",
+    "pydantic>=2.12.3",
+    "rich>=14.2.0",
+    "torch>=2.9.0",
+    "torchaudio>=2.9.0",
+    "torchvision>=0.24.0",
+    "transformers>=4.57.1",
+    "typer>=0.20.0",
+]
+
+[project.optional-dependencies]
+rag = [
+    "faiss-cpu>=1.12.0",
+    "llm>=0.27.1",
+    "peft>=0.17.1",
+    "sentence-transformers>=5.1.2",
+    "trl>=0.24.0",
+    "wandb>=0.22.3",
+]
+sentence-transformers = [
+    "llm>=0.27.1",
+    "peft>=0.17.1",
+    "trl>=0.24.0",
+    "wandb>=0.22.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.24,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+    "jupyterlab>=4.4.10",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+]
+lint = [
+    "black>=25.9.0",
+    "isort>=7.0.0",
+    "nbqa>=1.9.1",
+    "ruff>=0.14.3",
+]
