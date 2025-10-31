@@ -1,57 +1,48 @@
 [project]
-name = "theairepo"
+name = "airepo"                 # dist name can stay "airepo"; it doesn't need to match import name
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "Aaron Schlenker", email = "aschlenk3@gmail.com" }
-]
+authors = [{ name = "Aaron Schlenker", email = "aschlenk3@gmail.com" }]
 requires-python = ">=3.11"
+
+# --- runtime deps ---
 dependencies = [
-    "accelerate>=1.11.0",
-    "datasets>=4.3.0",
-    "evaluate>=0.4.6",
-    "hydra-core>=1.3.2",
-    "omegaconf>=2.3.0",
-    "pydantic>=2.12.3",
-    "rich>=14.2.0",
-    "torch>=2.9.0",
-    "torchaudio>=2.9.0",
-    "torchvision>=0.24.0",
-    "transformers>=4.57.1",
-    "typer>=0.20.0",
+  "accelerate>=1.11.0",
+  "datasets>=2.19.0", # <-- fix: 'datasets' is 2.x, not 4.x
+  "evaluate>=0.4.6",
+  "hydra-core>=1.3.2",
+  "omegaconf>=2.3.0",
+  "pip>=25.3",
+  "pydantic>=2.12.3",
+  "rich>=14.2.0",
+  "torch>=2.9.0",
+  "torchaudio>=2.9.0",
+  "torchvision>=0.24.0",
+  "transformers>=4.57.1",
+  "typer>=0.20.0",
 ]
 
 [project.optional-dependencies]
-rag = [
-    "faiss-cpu>=1.12.0",
-    "llm>=0.27.1",
-    "peft>=0.17.1",
-    "sentence-transformers>=5.1.2",
-    "trl>=0.24.0",
-    "wandb>=0.22.3",
-]
-sentence-transformers = [
-    "llm>=0.27.1",
-    "peft>=0.17.1",
-    "trl>=0.24.0",
-    "wandb>=0.22.3",
-]
-
-[build-system]
-requires = ["uv_build>=0.8.24,<0.9.0"]
-build-backend = "uv_build"
+rag = ["faiss-cpu>=1.8.0", "sentence-transformers>=3.0.0"]
+llm = ["peft>=0.17.1", "trl>=0.24.0", "wandb>=0.22.3"]
+# ^ removed the accidental third-party "llm" and the confusing "sentence-transformers" extra group
 
 [dependency-groups]
-dev = [
-    "ipykernel>=7.1.0",
-    "jupyterlab>=4.4.10",
-    "pre-commit>=4.3.0",
-    "pytest>=8.4.2",
-]
-lint = [
-    "black>=25.9.0",
-    "isort>=7.0.0",
-    "nbqa>=1.9.1",
-    "ruff>=0.14.3",
-]
+dev  = ["ipykernel>=7.1.0", "jupyterlab>=4.4.10", "pre-commit>=4.3.0", "pytest>=8.4.2"]
+lint = ["black>=25.9.0", "isort>=7.0.0", "nbqa>=1.9.1", "ruff>=0.14.3"]
+
+# --- build backend: setuptools with src/ discovery ---
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["airoad*"]           # <-- discover your package under src/airoad
+
+[tool.setuptools.package-data]
+airoad = ["py.typed"]
