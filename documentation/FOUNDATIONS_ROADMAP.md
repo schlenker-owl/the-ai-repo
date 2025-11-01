@@ -1,9 +1,8 @@
-````markdown
 # Documentation — Foundations Roadmap (v0.1)
 
 Welcome! This learning guide walks you through everything already implemented in **the-ai-repo** (import package: `airoad`). It’s designed for fast, local experiments (Apple Silicon **MPS**/CPU) that build intuition first, then deepen.
 
-> If you prefer a “do-first” style: jump to **[Quickstart Labs](#quickstart-labs)** and run them. Each lab takes minutes.
+> Prefer a “do-first” style? Jump to **[Quickstart Labs](#quickstart-labs)** and run them. Each lab takes minutes.
 
 ---
 
@@ -13,9 +12,9 @@ Welcome! This learning guide walks you through everything already implemented in
 2. [Datasets & Standardization](#datasets--standardization)
 3. [Linear Regression (NumPy, GD)](#linear-regression-numpy-gd)
 4. [Logistic Regression (NumPy, GD)](#logistic-regression-numpy-gd)
-5. [Ridge (Closed-Form & GD) and Lasso (Coordinate Descent)](#ridge-closedform--gd-and-lasso-coordinate-descent)
+5. [Ridge (Closed-Form & GD) and Lasso (Coordinate Descent)](#ridge-closed-form--gd-and-lasso-coordinate-descent)
 6. [Optimizer Lab: SGD vs Momentum vs Adam](#optimizer-lab-sgd-vs-momentum-vs-adam)
-7. [Decision Tree (Gini) with Two-Level Lookahead](#decision-tree-gini-with-twolevel-lookahead)
+7. [Decision Tree (Gini) with Two-Level Lookahead](#decision-tree-gini-with-two-level-lookahead)
 8. [Linear SVM (Hinge + L2)](#linear-svm-hinge--l2)
 9. [PyTorch MLP (Autodiff Bridge)](#pytorch-mlp-autodiff-bridge)
 10. [Tiny Transformer & Mini RAG Demo (Optional)](#tiny-transformer--mini-rag-demo-optional)
@@ -28,9 +27,9 @@ Welcome! This learning guide walks you through everything already implemented in
 ## Environment & Project Basics
 
 - **Dependency manager**: [`uv`](https://docs.astral.sh/uv) (fast venv, lockfile).
-- **Import package**: `airoad` (under `src/airoad`).
+- **Import package**: `airoad` (`src/airoad`).
 - **Distribution name**: `airepo` (in `pyproject.toml`).
-- **Device**: Apple Silicon **MPS** or CPU (works out-of-the-box).
+- **Device**: Apple Silicon **MPS** or CPU.
 
 Setup:
 ```bash
@@ -51,7 +50,7 @@ VSCode → Command Palette → **Python: Select Interpreter** → `.venv/bin/pyt
 
 **Where**: `src/airoad/datasets/toy.py`
 
-* `make_linear_regression(n,d,noise)` → synthetic y = Xw + b + noise
+* `make_linear_regression(n, d, noise)` → synthetic (y = Xw + b + \text{noise})
 * `make_classification_2d(n, margin)` → binary labels with adjustable separability
 * `standardize(X)` → z-score per feature (critical for stable gradient descent)
 
@@ -65,22 +64,24 @@ VSCode → Command Palette → **Python: Select Interpreter** → `.venv/bin/pyt
 **Script**: `scripts/run_linreg.py`
 
 **Objective**
-[
-\min_{w,b}; \frac{1}{n}|Xw + b - y|^2
-]
+
+```math
+\min_{w,b}\; \frac{1}{n}\,\lVert Xw + b - y \rVert_2^2
+```
 
 **Gradient (weights-with-bias formulation)**
-With bias appended to X as a last column of ones:
-[
-\nabla_W = \frac{2}{n} X_{\text{ext}}^\top (X_{\text{ext}}W - y)
-]
+With bias appended to (X) as a last column of ones ((X_{\text{ext}})):
 
-**Mental Model**:
+```math
+\nabla_{W} \;=\; \frac{2}{n}\, X_{\text{ext}}^\top \big(X_{\text{ext}} W - y\big)
+```
+
+**Mental Model**
 
 * You’re minimizing squared error by following the slope of the loss surface.
 * Standardization lets a single learning rate work across features.
 
-**Try**:
+**Try**
 
 ```bash
 uv run python scripts/run_linreg.py --n 200 --d 1 --noise 0.1 --lr 0.1 --epochs 500
@@ -96,18 +97,23 @@ uv run python scripts/run_linreg.py --n 200 --d 1 --noise 0.1 --lr 0.1 --epochs 
 **Script**: `scripts/run_logreg.py`
 
 **Objective**
-[
-\min_{w,b}; -\frac{1}{n}\sum_i [y_i \log p_i + (1-y_i)\log(1-p_i)] + \lambda|w|_2^2,\quad p_i=\sigma(X_i w + b)
-]
+
+```math
+\min_{w,b}\; -\frac{1}{n}\sum_{i=1}^{n}\Big[y_i \log p_i + (1-y_i)\log(1-p_i)\Big] + \lambda \lVert w\rVert_2^2,
+\quad p_i = \sigma(x_i^\top w + b)
+```
 
 **Gradient**
-[
-\nabla_w = \frac{1}{n} X^\top (p - y) + 2\lambda w,\quad \nabla_b = \text{mean}(p-y)
-]
+
+```math
+\nabla_w = \frac{1}{n} X^\top (p - y) + 2\lambda w,
+\qquad
+\nabla_b = \frac{1}{n}\mathbf{1}^\top (p - y)
+```
 
 **Why**: Probabilistic view; outputs calibrated probabilities (unlike SVM).
 
-**Try**:
+**Try**
 
 ```bash
 uv run python scripts/run_logreg.py --n 300 --margin 0.5 --lr 0.2 --epochs 800
@@ -122,22 +128,24 @@ uv run python scripts/run_logreg.py --n 300 --margin 0.5 --lr 0.2 --epochs 800
 **Where**: `src/airoad/models/ridge_lasso.py`
 **Script**: `scripts/run_ridge_lasso.py`
 
-**Ridge Objective**
-[
-\min_{w,b}; \frac{1}{n}|Xw+b-y|^2 + \lambda|w|_2^2
-]
+**Ridge Objective** (bias unpenalized)
+
+```math
+\min_{w,b}\; \frac{1}{n}\,\lVert Xw + b - y \rVert_2^2 + \lambda \lVert w\rVert_2^2
+```
 
 * **Closed-form** (normal equations with bias unpenalized).
 * **GD** (same gradient form + L2 term).
 
 **Lasso Objective (CD)**
-[
-\min_{w,b}; \frac{1}{2n}|y-(Xw+b)|^2 + \lambda |w|_1
-]
 
-* Coordinate descent with **soft-thresholding** → sparsity grows with λ.
+```math
+\min_{w,b}\; \frac{1}{2n}\,\lVert y - (Xw + b) \rVert_2^2 + \lambda \lVert w\rVert_1
+```
 
-**Try**:
+* Coordinate descent with **soft-thresholding** → sparsity grows with (\lambda).
+
+**Try**
 
 ```bash
 # Ridge: closed-form vs GD match
@@ -160,7 +168,7 @@ uv run python scripts/run_ridge_lasso.py lasso --lam 0.3
 * **Momentum**: averages gradients → smoother updates.
 * **Adam**: adaptive step sizes per parameter; often fastest to “good enough”.
 
-**Try**:
+**Try**
 
 ```bash
 uv run python scripts/optimizer_lab.py --steps 300
@@ -187,14 +195,16 @@ uv run python scripts/optimizer_lab.py --steps 300
 **Where**: `src/airoad/models/linear_svm.py`
 
 **Objective (primal)**
-[
-\min_w \frac{\lambda}{2}|w|_2^2 + \frac{1}{n}\sum_i \max(0, 1 - y_i f(x_i)),\quad y_i\in{-1,1}
-]
+
+```math
+\min_{w}\; \frac{\lambda}{2}\,\lVert w\rVert_2^2 \;+\; \frac{1}{n}\sum_{i=1}^{n} \max\!\big(0,\; 1 - y_i f(x_i)\big),
+\qquad y_i \in \{-1,1\}
+```
 
 * Margin-based; unlike logistic, not probabilistic.
-* We use a deterministic, full-batch subgradient (Pegasos-style spirit), bias **unpenalized**.
+* Deterministic full-batch subgradient (Pegasos-style spirit), bias **unpenalized**.
 
-**When SVM > Logistic**: linearly separable data with clear margins; robust to outliers on the score side.
+**When SVM > Logistic**: linearly separable data with clear margins; robust to some outliers on the score side.
 
 ---
 
@@ -210,7 +220,7 @@ uv run python scripts/optimizer_lab.py --steps 300
 
 * **Task**: Learn XOR (non-linear) with a small MLP; loss `BCEWithLogitsLoss`.
 
-**Try**:
+**Try**
 
 ```bash
 uv run python scripts/train_mlp_torch.py --steps 300
@@ -227,13 +237,13 @@ uv run python scripts/train_mlp_torch.py --steps 300
 * Transformer: `scripts/train_tiny_transformer.py` (character LM, Tiny Shakespeare or toy fallback)
 * RAG: `scripts/rag_build_faiss.py` (builds minimal FAISS index; falls back to sklearn if FAISS wheel missing)
 
-**Enable extras once**:
+**Enable extras once**
 
 ```bash
 uv sync --all-groups --extra rag   # for FAISS + sentence-transformers
 ```
 
-**Try**:
+**Try**
 
 ```bash
 uv run python scripts/fetch_data.py tinyshakespeare
@@ -247,13 +257,13 @@ uv run python scripts/rag_build_faiss.py
 
 **Where**: `tests/`
 
-* `test_linreg_grad.py` → analytic ≈ numerical gradient check (tight tolerance).
-* `test_logreg_perf.py` → logistic reaches **≥ 0.9** accuracy on easy data.
-* `test_ridge_lasso.py` → ridge (closed-form ≈ GD), lasso zeros increase with λ.
-* `test_optimizers.py` → Adam not worse than SGD on toy.
-* `test_tree_gini.py` → tree cracks XOR with lookahead.
-* `test_linear_svm.py` → SVM ≥ 0.9 on separable set.
-* `test_mlp_torch.py` → MLP ≥ 0.9 on XOR within ~120 steps (CPU).
+* `test_linreg_grad.py` → analytic ≈ numerical gradient check (tight tolerance)
+* `test_logreg_perf.py` → logistic reaches **≥ 0.9** accuracy on easy data
+* `test_ridge_lasso.py` → ridge (closed-form ≈ GD), lasso zeros increase with (\lambda)
+* `test_optimizers.py` → Adam not worse than SGD on toy
+* `test_tree_gini.py` → tree cracks XOR with lookahead
+* `test_linear_svm.py` → SVM ≥ 0.9 on separable set
+* `test_mlp_torch.py` → MLP ≥ 0.9 on XOR within ~120 steps (CPU)
 
 Run:
 
@@ -298,14 +308,14 @@ uv run python scripts/rag_build_faiss.py
 
 **Level up the Foundations**
 
-* **Regularization paths**: sweep λ for ridge/lasso; plot MSE vs sparsity.
+* **Regularization paths**: sweep (\lambda) for ridge/lasso; plot MSE vs sparsity.
 * **Decision boundary gallery**: compare Logistic vs SVM vs Tree vs MLP on the same 2D datasets.
 * **Optimizer dynamics**: track loss curves per step; visualize gradient norms and effective step sizes.
 
 **Bridge to Deep Learning**
 
 * Implement a **NumPy MLP** (manual backprop) mirroring the PyTorch MLP.
-* Add a **learning-rate scheduler** & **weight decay** to MLP training script.
+* Add a **learning-rate scheduler** & **weight decay** to MLP training.
 
 **Toward LLM Systems**
 
