@@ -47,12 +47,12 @@ Learn modern **Machine Learning** and **LLMs** by building them from the ground 
 │   ├── train_tiny_transformer.py       # tiny character LM with HF Trainer
 │   └── rag_build_faiss.py              # minimal FAISS index (optional extra)
 └── tests/
-├── test_imports.py
-├── test_smoke_env.py
-├── test_linreg_grad.py
-├── test_logreg_perf.py
-├── test_ridge_lasso.py
-└── test_optimizers.py
+│   ├── test_imports.py
+│   ├── test_smoke_env.py
+│   ├── test_linreg_grad.py
+│   ├── test_logreg_perf.py
+│   ├── test_ridge_lasso.py
+    └── test_optimizers.py
 
 ````
 
