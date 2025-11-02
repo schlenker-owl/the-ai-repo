@@ -46,32 +46,36 @@ PCA finds **orthogonal directions** (principal components) that **maximize varia
 ### Math (center → SVD → project)
 
 1. **Center** data $X \in \mathbb{R}^{n \times d}$ by mean $\mu$:
-   $$
-   X_c ;=; X - \mathbf{1},\mu^\top
-   $$
+
+```math
+X_c \;=\; X - \mathbf{1}\,\mu^\top
+```
 
 2. **SVD** (economy):
-   $$
-   X_c ;=; U,S,V^\top, \qquad
-   \text{PC directions} = V,\quad
-   \text{PC variances} = \frac{S^2}{,n-1,}
-   $$
+
+```math
+X_c \;=\; U\,S\,V^\top, \qquad
+\text{PC directions} = V, \quad
+\text{PC variances} = \frac{S^2}{\,n-1\,}
+```
 
 3. **Keep top-$k$** rows of $V^\top$ as $W_k \in \mathbb{R}^{d \times k}$ and **project**:
-   $$
-   Z ;=; X_c,W_k ;\in; \mathbb{R}^{n \times k}
-   $$
+
+```math
+Z \;=\; X_c\,W_k \;\in\; \mathbb{R}^{n \times k}
+```
 
 4. **Reconstruct** (optional):
-   $$
-   \hat{X} ;=; Z,W_k^\top + \mu
-   $$
+
+```math
+\hat{X} \;=\; Z\,W_k^\top + \mu
+```
 
 5. **Explained variance ratio** (EVR) for top-$k$:
-   $$
-   \text{EVR}*k ;=;
-   \frac{\sum*{i=1}^{k} S_i^2}{\sum_{i=1}^{\min(n,d)} S_i^2}
-   $$
+
+```math
+\text{EVR}_k \;=\; \frac{\sum_{i=1}^{k} S_i^2}{\sum_{i=1}^{\min(n,d)} S_i^2}
+```
 
 ### Implementation Notes
 
@@ -110,9 +114,11 @@ Partition $n$ points into $k$ clusters by minimizing **within-cluster squared di
 ### Objective
 
 Given centers $C={c_1,\dots,c_k}$ and labels $\ell_i\in{1,\dots,k}$,
-$$
-\min_{C,;\ell};\sum_{i=1}^{n} \big\lVert x_i - c_{\ell_i} \big\rVert_2^2
-$$
+
+```math
+\min_{C,\;\ell}\;\sum_{i=1}^{n} \big\lVert x_i - c_{\ell_i} \big\rVert_2^2
+```
+
 The objective value at the solution is often called **inertia**.
 
 ### Algorithm (with k-means++)
@@ -126,9 +132,10 @@ The objective value at the solution is often called **inertia**.
 3. Run **multiple restarts** (`n_init`) and keep the best inertia.
 
 Useful identity for fast distances:
-$$
-\lVert x - c \rVert_2^2 ;=; \lVert x\rVert_2^2 + \lVert c\rVert_2^2 - 2,x^\top c
-$$
+
+```math
+\lVert x - c \rVert_2^2 \;=\; \lVert x\rVert_2^2 + \lVert c\rVert_2^2 - 2\,x^\top c
+```
 
 ### Implementation Notes
 
@@ -224,6 +231,4 @@ uv run pytest -q
 
 **Keep iterating:** small, fast experiments build durable intuition. When you’re ready, we’ll add **GMM (EM)** and a **PCA→K-Means notebook** with plots to compare raw vs. reduced clustering.
 
-```
-::contentReference[oaicite:0]{index=0}
-```
+
