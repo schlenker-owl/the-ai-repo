@@ -1,92 +1,281 @@
 from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass
+from typing import Literal, Tuple
 
-def _log_gauss(x, mu, cov):
+
+# ===========================
+#  Log-density helpers
+# ===========================
+
+def _log_gauss_full(x: np.ndarray, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    """Log N(x | mu, cov) per row (full covariance)."""
     d = x.shape[1]
-    cov_inv = np.linalg.inv(cov)
-    det = np.linalg.det(cov) + 1e-12
+    cov_reg = cov + 1e-12 * np.eye(d, dtype=x.dtype)
+    cov_inv = np.linalg.inv(cov_reg)
+    sign, logdet = np.linalg.slogdet(cov_reg)
+    logdet = float(logdet)
     xc = x - mu
     quad = np.einsum("ni,ij,nj->n", xc, cov_inv, xc)
-    return -0.5 * (quad + d * np.log(2 * np.pi) + np.log(det))
+    return -0.5 * (quad + d * np.log(2.0 * np.pi) + logdet)
 
-def _contingency(pred, true, k_pred, k_true):
+
+def _log_gauss_diag(x: np.ndarray, mu: np.ndarray, var: np.ndarray) -> np.ndarray:
+    """Log N(x | mu, diag(var)) per row."""
+    d = x.shape[1]
+    var_reg = var + 1e-12
+    inv = 1.0 / var_reg
+    xc = x - mu
+    quad = (xc * xc * inv).sum(axis=1)
+    logdet = np.log(var_reg).sum()
+    return -0.5 * (quad + d * np.log(2.0 * np.pi) + logdet)
+
+
+def _log_gauss_spherical(x: np.ndarray, mu: np.ndarray, sigma2: float) -> np.ndarray:
+    """Log N(x | mu, sigma^2 I) per row."""
+    d = x.shape[1]
+    s2 = float(sigma2 + 1e-12)
+    xc = x - mu
+    quad = (xc * xc).sum(axis=1) / s2
+    logdet = d * np.log(s2)
+    return -0.5 * (quad + d * np.log(2.0 * np.pi) + logdet)
+
+
+# ===========================
+#  NMI (test utility)
+# ===========================
+
+def _contingency(pred: np.ndarray, true: np.ndarray, k_pred: int, k_true: int) -> np.ndarray:
     C = np.zeros((k_pred, k_true), dtype=np.int64)
     for i in range(len(true)):
         C[pred[i], true[i]] += 1
     return C
 
-def normalized_mutual_info(pred, true):
+
+def normalized_mutual_info(pred: np.ndarray, true: np.ndarray) -> float:
+    """
+    NMI = 2 * I(P;T) / (H(P) + H(T)), permutation-invariant.
+    """
     pred = np.asarray(pred, dtype=int)
     true = np.asarray(true, dtype=int)
-    k_pred = pred.max() + 1
-    k_true = true.max() + 1
-    C = _contingency(pred, true, k_pred, k_true)
+    kP, kT = pred.max() + 1, true.max() + 1
+    C = _contingency(pred, true, kP, kT)
     n = C.sum()
-    pi = C.sum(axis=1) / n
-    pj = C.sum(axis=0) / n
-    outer = np.outer(pi, pj) + 1e-12
-    nz = C > 0
-    I = (C[nz] / n * np.log((C[nz] / n) / outer[nz])).sum()
-    Hx = -(pi * np.log(pi + 1e-12)).sum()
-    Hy = -(pj * np.log(pj + 1e-12)).sum()
-    return float(2 * I / (Hx + Hy + 1e-12))
+    if n == 0:
+        return 0.0
+    p = C / n
+    pP = p.sum(axis=1, keepdims=True)  # (kP,1)
+    pT = p.sum(axis=0, keepdims=True)  # (1,kT)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        logterm = np.where(p > 0, np.log(p / (pP @ pT)), 0.0)
+    I = float((p * logterm).sum())
+    H_P = float(-(pP[pP > 0] * np.log(pP[pP > 0])).sum())
+    H_T = float(-(pT[pT > 0] * np.log(pT[pT > 0])).sum())
+    return 0.0 if H_P + H_T == 0.0 else 2.0 * I / (H_P + H_T)
+
+
+# ===========================
+#  GMM with K-Means init
+# ===========================
 
 @dataclass
 class GMM:
     n_components: int
-    max_iter: int = 100
-    tol: float = 1e-4
-    reg_covar: float = 1e-6
+    max_iter:   int = 100
+    tol:        float = 1e-4
+    reg_covar:  float = 1e-6
     random_state: int = 0
+    init:       Literal["kmeans", "random"] = "kmeans"
+    n_init:     int = 10              # EM restarts; keep best ll
+    covariance_type: Literal["full", "diag", "spherical"] = "full"
+    whiten:     bool = False          # keep False to mirror KMeans test behavior
 
-    # fitted
-    weights_: np.ndarray | None = None
-    means_: np.ndarray | None = None
-    covs_: np.ndarray | None = None
+    # learned (in whatever space we trained in: whitened or raw)
+    weights_: np.ndarray | None = None      # (K,)
+    means_:   np.ndarray | None = None      # (K,D)
+    covs_:    np.ndarray | None = None      # (K,D,D) or (K,1,1)
+    # whitening params (used only if whiten=True)
+    x_mean_:  np.ndarray | None = None
+    x_std_:   np.ndarray | None = None
+
+    # ---------- initialization ----------
+
+    def _kmeans_init(self, X: np.ndarray, seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Initialize from in-repo KMeans on the *same* space as EM (raw if whiten=False).
+        """
+        from airoad.unsupervised.kmeans import KMeans
+        n, d = X.shape
+        km = KMeans(
+            n_clusters=self.n_components,
+            init="kmeans++",
+            n_init=20,              # strong restarts
+            max_iter=300,
+            tol=1e-8,
+            random_state=seed,
+        ).fit(X)
+        labels = km.predict(X)
+        weights, means, covs = [], [], []
+        for k in range(self.n_components):
+            mask = labels == k
+            cnt = int(mask.sum())
+            if cnt == 0:
+                # rare, but guard: pick a far point
+                rng = np.random.default_rng(seed + 101 + k)
+                idx = int(rng.integers(0, n))
+                mu = X[idx]
+                cov = np.eye(d) if self.covariance_type != "spherical" else np.array([[1.0]])
+                w = 1.0 / self.n_components
+            else:
+                Xk = X[mask]
+                mu = Xk.mean(axis=0)
+                xc = Xk - mu
+                if self.covariance_type == "full":
+                    Sk = (xc.T @ xc) / max(1, cnt) + self.reg_covar * np.eye(d)
+                    cov = Sk
+                elif self.covariance_type == "diag":
+                    var = xc.var(axis=0) + self.reg_covar
+                    cov = np.diag(var)
+                else:
+                    var = float(xc.var() + self.reg_covar)
+                    cov = np.array([[var]])
+                w = cnt / n
+            weights.append(w); means.append(mu); covs.append(cov)
+        return (
+            np.asarray(weights, dtype=X.dtype),
+            np.stack(means, axis=0),
+            np.stack(covs,  axis=0),
+        )
+
+    def _init_params(self, X: np.ndarray, seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+        if self.init == "kmeans":
+            w, m, c = self._kmeans_init(X, seed)
+        else:
+            n, d = X.shape
+            rng = np.random.default_rng(seed)
+            m = X[rng.choice(n, size=self.n_components, replace=False)].copy()
+            if self.covariance_type == "full":
+                c = np.array([np.eye(d) for _ in range(self.n_components)])
+            elif self.covariance_type == "diag":
+                c = np.array([np.eye(d) for _ in range(self.n_components)])
+            else:
+                c = np.array([[[1.0]] for _ in range(self.n_components)])
+            w = np.ones(self.n_components, dtype=X.dtype) / self.n_components
+        init_ll = self._loglik(X, w, m, c)
+        return w, m, c, init_ll
+
+    # ---------- log-likelihood ----------
+
+    def _loglik(self, X: np.ndarray, w: np.ndarray, m: np.ndarray, c: np.ndarray) -> float:
+        if self.covariance_type == "full":
+            logp = np.stack([_log_gauss_full(X, m[k], c[k]) + np.log(w[k] + 1e-12)
+                             for k in range(self.n_components)], axis=1)
+        elif self.covariance_type == "diag":
+            logp = np.stack([_log_gauss_diag(X, m[k], np.diag(c[k])) + np.log(w[k] + 1e-12)
+                             for k in range(self.n_components)], axis=1)
+        else:
+            logp = np.stack([_log_gauss_spherical(X, m[k], float(c[k][0, 0])) + np.log(w[k] + 1e-12)
+                             for k in range(self.n_components)], axis=1)
+        mlog = logp.max(axis=1, keepdims=True)
+        return float((mlog + np.log(np.exp(logp - mlog).sum(axis=1, keepdims=True) + 1e-12)).sum())
+
+    # ---------- EM core ----------
+
+    def _em_run(self, X: np.ndarray, seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+        w, m, c, init_ll = self._init_params(X, seed)
+        prev_ll = init_ll
+        for _ in range(self.max_iter):
+            # E-step
+            if self.covariance_type == "full":
+                logp = np.stack([_log_gauss_full(X, m[k], c[k]) + np.log(w[k] + 1e-12)
+                                 for k in range(self.n_components)], axis=1)
+            elif self.covariance_type == "diag":
+                logp = np.stack([_log_gauss_diag(X, m[k], np.diag(c[k])) + np.log(w[k] + 1e-12)
+                                 for k in range(self.n_components)], axis=1)
+            else:
+                logp = np.stack([_log_gauss_spherical(X, m[k], float(c[k][0, 0])) + np.log(w[k] + 1e-12)
+                                 for k in range(self.n_components)], axis=1)
+            mlog = logp.max(axis=1, keepdims=True)
+            p = np.exp(logp - mlog)
+            r = p / (p.sum(axis=1, keepdims=True) + 1e-12)   # responsibilities
+
+            # M-step
+            Nk = r.sum(axis=0) + 1e-12
+            w = Nk / X.shape[0]
+            m = (r.T @ X) / Nk[:, None]
+
+            if self.covariance_type == "full":
+                c_list = []
+                for k in range(self.n_components):
+                    xc = X - m[k]
+                    Sk = (r[:, k][:, None] * xc).T @ xc / Nk[k]
+                    Sk += self.reg_covar * np.eye(X.shape[1])
+                    c_list.append(Sk)
+                c = np.stack(c_list, axis=0)
+            elif self.covariance_type == "diag":
+                c_list = []
+                for k in range(self.n_components):
+                    xc = X - m[k]
+                    var = (r[:, k][:, None] * (xc * xc)).sum(axis=0) / Nk[k]
+                    var = var + self.reg_covar
+                    c_list.append(np.diag(var))
+                c = np.stack(c_list, axis=0)
+            else:
+                d = X.shape[1]
+                sig = []
+                for k in range(self.n_components):
+                    xc = X - m[k]
+                    var = (r[:, k][:, None] * (xc * xc)).sum() / (Nk[k] * d)
+                    sig.append([[float(var + self.reg_covar)]])
+                c = np.array(sig)
+
+            # LL
+            curr_ll = self._loglik(X, w, m, c)
+            if curr_ll - prev_ll < self.tol:
+                break
+            prev_ll = curr_ll
+
+        final_ll = prev_ll
+        # Likelihood guard: never return worse than init
+        if final_ll + 1e-8 < init_ll:
+            w, m, c, final_ll = self._init_params(X, seed)
+        return w, m, c, final_ll
+
+    # ---------- API ----------
 
     def fit(self, X: np.ndarray):
         X = np.asarray(X, dtype=np.float64)
-        n, d = X.shape
-        rng = np.random.default_rng(self.random_state)
-        # init means from random points
-        means = X[rng.choice(n, size=self.n_components, replace=False)].copy()
-        weights = np.ones(self.n_components) / self.n_components
-        covs = np.array([np.cov(X.T) + self.reg_covar * np.eye(d) for _ in range(self.n_components)])
+        if self.whiten:
+            mean = X.mean(axis=0)
+            std  = X.std(axis=0) + 1e-12
+            X_use = (X - mean) / std
+            self.x_mean_, self.x_std_ = mean, std
+        else:
+            X_use = X
+            self.x_mean_, self.x_std_ = None, None
 
-        prev_ll = -np.inf
-        for _ in range(self.max_iter):
-            # E-step: responsibilities
-            log_probs = np.stack([_log_gauss(X, means[k], covs[k]) + np.log(weights[k] + 1e-12)
-                                  for k in range(self.n_components)], axis=1)  # (n,K)
-            # log-sum-exp
-            m = log_probs.max(axis=1, keepdims=True)
-            probs = np.exp(log_probs - m)
-            resp = probs / (probs.sum(axis=1, keepdims=True) + 1e-12)
+        best_ll = -np.inf
+        best_params = None
+        for run in range(self.n_init):
+            seed = int(self.random_state + 9973 * run)
+            w, m, c, ll = self._em_run(X_use, seed)
+            if ll > best_ll:
+                best_ll = ll
+                best_params = (w, m, c)
 
-            # M-step
-            Nk = resp.sum(axis=0) + 1e-12
-            weights = Nk / n
-            means = (resp.T @ X) / Nk[:, None]
-            covs_new = []
-            for k in range(self.n_components):
-                xc = X - means[k]
-                Sk = (resp[:, k][:, None] * xc).T @ xc / Nk[k]
-                Sk += self.reg_covar * np.eye(d)
-                covs_new.append(Sk)
-            covs = np.stack(covs_new, axis=0)
-
-            # log-likelihood
-            ll = float((m + np.log(probs.sum(axis=1, keepdims=True) + 1e-12)).sum())
-            if abs(ll - prev_ll) < self.tol:
-                break
-            prev_ll = ll
-
-        self.weights_, self.means_, self.covs_ = weights, means, covs
+        self.weights_, self.means_, self.covs_ = best_params
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         X = np.asarray(X, dtype=np.float64)
-        log_probs = np.stack([_log_gauss(X, self.means_[k], self.covs_[k]) + np.log(self.weights_[k] + 1e-12)
-                              for k in range(self.n_components)], axis=1)
-        return log_probs.argmax(axis=1)
+        X_use = (X - self.x_mean_) / self.x_std_ if (self.x_mean_ is not None) else X
+        if self.covariance_type == "full":
+            logp = np.stack([_log_gauss_full(X_use, self.means_[k], self.covs_[k]) + np.log(self.weights_[k] + 1e-12)
+                             for k in range(self.n_components)], axis=1)
+        elif self.covariance_type == "diag":
+            logp = np.stack([_log_gauss_diag(X_use, self.means_[k], np.diag(self.covs_[k])) + np.log(self.weights_[k] + 1e-12)
+                             for k in range(self.n_components)], axis=1)
+        else:
+            logp = np.stack([_log_gauss_spherical(X_use, self.means_[k], float(self.covs_[k][0, 0])) + np.log(self.weights_[k] + 1e-12)
+                             for k in range(self.n_components)], axis=1)
+        return logp.argmax(axis=1)
