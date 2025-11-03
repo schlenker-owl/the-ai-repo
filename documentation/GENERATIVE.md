@@ -1,24 +1,24 @@
-# GENERATIVE — Autoencoder, VAE, and DDPM-Mini (v0.1)
+# GENERATIVE — Autoencoder · VAE · DDPM-Mini (v0.2)
 
-This guide adds a gentle, **hands-on** path through three foundational generative families:
+A gentle, **hands-on** path through three foundational generative families:
 
-- **Autoencoder (AE)** — reconstruct inputs; learn compressed codes.
-- **Variational Autoencoder (VAE)** — probabilistic latent variable model; **ELBO** training with **KL warmup**.
+- **Autoencoder (AE)** — reconstruct inputs; learn compressed codes.  
+- **Variational Autoencoder (VAE)** — probabilistic latent variable model; **ELBO** training with **KL warmup**.  
 - **DDPM-Mini** — tiny diffusion model (28×28) with a very small UNet and just a few timesteps.
 
-Everything runs quickly on **Apple Silicon MPS** or CPU and comes with tiny tests.
+Everything runs quickly on **Apple Silicon (MPS)** or CPU and includes tiny tests.
 
-> **Math rendering on GitHub:** inline formulas use `$…$` and display equations use `$$…$$`.
+> **Math on GitHub:** inline math uses `$…$`; display equations use fenced code blocks with `math`.
 
 ---
 
 ## Contents
-1. [Environment](#environment)
-2. [Autoencoder (AE)](#autoencoder-ae)
-3. [Variational Autoencoder (VAE)](#variational-autoencoder-vae)
-4. [DDPM-Mini (diffusion)](#ddpmmini-diffusion)
-5. [Acceptance Gates & Tests](#acceptance-gates--tests)
-6. [Learn-By-Tweaking](#learn-by-tweaking)
+1. [Environment](#environment)  
+2. [Autoencoder (AE)](#autoencoder-ae)  
+3. [Variational Autoencoder (VAE)](#variational-autoencoder-vae)  
+4. [DDPM-Mini (diffusion)](#ddpm-mini-diffusion)  
+5. [Acceptance Gates & Tests](#acceptance-gates--tests)  
+6. [Learn-By-Tweaking](#learn-by-tweaking)  
 7. [File Map](#file-map)
 
 ---
@@ -50,7 +50,7 @@ An AE learns an **encoder** $f_\phi: x \mapsto z$ and a **decoder** $g_\theta: z
 ### Loss (MSE)
 
 ```math
-\mathcal{L}_\text{AE} = \frac{1}{N}\sum_{i=1}^{N}\big\lVert \hat{x}_i - x_i \big\rVert_2^2
+\mathcal{L}_\text{AE} \;=\; \frac{1}{N}\sum_{i=1}^{N}\big\lVert \hat{x}_i - x_i \big\rVert_2^2.
 ```
 
 We use a small **conv encoder/decoder** with stride-2 downsamples to reach a 64-dim latent, then mirror back with ConvTranspose. Inputs/outputs are in $[0,1]$ (Sigmoid on the last layer).
@@ -73,10 +73,11 @@ uv run python scripts/train_ae_mnist.py --steps 500 --latent-dim 64 --limit-trai
 
 ### Intuition
 
-A VAE posits a latent variable $z$ with prior $p(z)=\mathcal{N}(0,I)$ and learns an approximate posterior $q_\phi(z\mid x)=\mathcal{N}!\big(\mu_\phi(x), \operatorname{diag}(\sigma_\phi^2(x))\big)$. Samples are drawn via the **reparameterization trick**:
+A VAE posits a latent variable $z$ with prior $p(z)=\mathcal{N}(0,I)$ and learns an approximate posterior
+$q_\phi(z\mid x)=\mathcal{N}!\big(\mu_\phi(x), \operatorname{diag}(\sigma_\phi^2(x))\big)$. Samples use the **reparameterization trick**:
 
 ```math
-z \;=\; \mu + \sigma \odot \epsilon,\quad \epsilon \sim \mathcal{N}(0,I).
+z \;=\; \mu \;+\; \sigma \odot \epsilon,\quad \epsilon \sim \mathcal{N}(0,I).
 ```
 
 ### ELBO Objective
@@ -84,7 +85,7 @@ z \;=\; \mu + \sigma \odot \epsilon,\quad \epsilon \sim \mathcal{N}(0,I).
 ```math
 \mathcal{L}_\text{ELBO}
 \;=\;
-\underbrace{\mathbb{E}_{q_\phi(z\mid x)}\big[\log p_\theta(x\mid z)\big]}_{\text{reconstruction}}
+\underbrace{\mathbb{E}_{q_\phi(z\mid x)}\!\big[\log p_\theta(x\mid z)\big]}_{\text{reconstruction}}
 \;-\;
 \underbrace{\mathrm{KL}\!\big(q_\phi(z\mid x)\;\|\;p(z)\big)}_{\text{regularization}}.
 ```
@@ -93,18 +94,20 @@ For a diagonal Gaussian $q_\phi(z\mid x)$ and standard normal prior:
 
 ```math
 \mathrm{KL}\!\big(q_\phi(z\mid x)\;\|\;p(z)\big)
-=\frac12 \sum_{j=1}^{d} \left(
+=\frac12 \sum_{j=1}^{d} \!\left(
 \mu_j^2 + \sigma_j^2 - \log \sigma_j^2 - 1
 \right).
 ```
 
-We train with a **Bernoulli decoder** (BCE recon) and a **KL warmup** schedule:
+We use a **KL warmup** schedule:
 
 ```math
 \beta_t \;=\; \min\!\Big(\beta_{\max}, \;\frac{t}{\text{warmup\_steps}}\,\beta_{\max}\Big),
 \qquad
-\mathcal{L}_t \;=\; \text{BCE} \;+\; \beta_t \,\mathrm{KL}.
+\mathcal{L}_t \;=\; \text{Recon} \;+\; \beta_t \cdot \mathrm{KL}.
 ```
+
+> In our code we use a deterministic decode ($z=\mu$) for stable tests and scale KL to comparable magnitude with recon on tiny batches.
 
 ### Run
 
@@ -124,14 +127,14 @@ uv run python scripts/train_vae_mnist.py --steps 600 --warmup-steps 200 --latent
 
 ### Intuition
 
-Diffusion models learn to **denoise** data by reversing a simple **forward noising** process. We use a tiny UNet and **very few steps** ($T\in[4,8]$) for speed.
+Diffusion models learn to **denoise** by reversing a simple **forward noising** process. We use a tiny UNet and **very few steps** ($T\in[4,8]$) for speed.
 
 ### Forward (noising)
 
 With a variance schedule ${\beta_t}_{t=1}^T$, define $\alpha_t=1-\beta_t$, $\bar{\alpha}*t=\prod*{s=1}^{t}\alpha_s$. Then
 
 ```math
-x_t \;=\; \sqrt{\bar{\alpha}_t}\,x_0 \;+\; \sqrt{1-\bar{\alpha}_t}\,\epsilon, 
+x_t \;=\; \sqrt{\bar{\alpha}_t}\,x_0 \;+\; \sqrt{1-\bar{\alpha}_t}\,\epsilon,
 \qquad \epsilon \sim \mathcal{N}(0, I).
 ```
 
@@ -140,8 +143,8 @@ x_t \;=\; \sqrt{\bar{\alpha}_t}\,x_0 \;+\; \sqrt{1-\bar{\alpha}_t}\,\epsilon,
 The model $\epsilon_\theta(x_t, t)$ predicts $\epsilon$ with MSE:
 
 ```math
-\mathcal{L}_\text{DDPM} 
-\;=\; \mathbb{E}_{t,\epsilon}\big[\,\lVert \epsilon_\theta(x_t, t) - \epsilon \rVert_2^2 \big].
+\mathcal{L}_\text{DDPM}
+\;=\; \mathbb{E}_{t,\epsilon}\!\left[\,\lVert \epsilon_\theta(x_t, t) - \epsilon \rVert_2^2 \right].
 ```
 
 ### Reverse (denoising) step (DDPM form)
@@ -151,8 +154,7 @@ x_{t-1}
 \;=\; \frac{1}{\sqrt{\alpha_t}}
 \left( x_t - \frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}}\,\epsilon_\theta(x_t,t) \right)
 \;+\; \sigma_t z,
-\quad z \sim \mathcal{N}(0,I),
-\quad \sigma_t=\sqrt{\beta_t}.
+\quad z \sim \mathcal{N}(0,I),\quad \sigma_t=\sqrt{\beta_t}.
 ```
 
 We keep the UNet **very small** and set $T{=}6$ by default. After training, we sample a tiny grid and save it.
@@ -168,14 +170,16 @@ uv run python scripts/train_ddpm_mini.py --steps 800 --T 6 --batch-size 128 --li
 
 ## Acceptance Gates & Tests
 
-* **AE**: single train step **reduces MSE** on a random batch.
-  Test: `test_ae_vae_ddpm.py::test_ae_train_step_reduces_mse`
-* **VAE**: ELBO with warmup — later step **≤** initial step (non-increasing).
-  Test: `test_ae_vae_ddpm.py::test_vae_elbo_step`
-* **DDPM-Mini**: loss is finite; backward works; shape sanity.
-  Test: `test_ae_vae_ddpm.py::test_ddpm_loss_and_shapes`
+* **AE:** one train step **reduces MSE** on a random batch.
+  Test: `tests/test_ae_vae_ddpm.py::test_ae_train_step_reduces_mse`
 
-Run all:
+* **VAE:** ELBO with warmup — later step **≤** initial step (non-increasing).
+  Test: `tests/test_ae_vae_ddpm.py::test_vae_elbo_step`
+
+* **DDPM-Mini:** loss is finite; backward works; shape sanity.
+  Test: `tests/test_ae_vae_ddpm.py::test_ddpm_loss_and_shapes`
+
+Run:
 
 ```bash
 uv run pytest -q
@@ -187,31 +191,32 @@ uv run pytest -q
 
 * **AE**
 
-  * Change `latent_dim` (e.g., 16→128); watch recon MSE and sample sharpness.
+  * Change `latent_dim` (e.g., 16→128); watch recon MSE and visual sharpness.
   * Try **BCE** recon instead of **MSE** (`nn.BCELoss`) when inputs are in $[0,1]$.
 
 * **VAE**
 
-  * Sweep `warmup_steps` and `beta_max`; see KL’s effect on blurry vs sharp recon.
-  * Visualize the latent by projecting $\mu(x)$ with PCA/TSNE to see clustering.
+  * Sweep `warmup_steps` and `beta_max`; see KL’s effect on blur vs. sharpness.
+  * Visualize latent means $\mu(x)$ via PCA/TSNE to inspect clustering.
 
 * **DDPM**
 
   * Vary $T$ (4/6/8). Fewer steps = faster but harder denoising.
-  * Try linear vs cosine-like beta schedules; observe grid quality.
+  * Try linear vs. cosine-like $\beta_t$ schedules; observe grid quality.
 
 ---
 
 ## File Map
 
-* `src/airoad/generative/ae.py` — conv **Autoencoder** (MSE recon).
-* `src/airoad/generative/vae.py` — conv **VAE** + **ELBO** + warmup helper.
-* `src/airoad/generative/ddpm_mini.py` — tiny **UNet**, scheduler, loss, sampler.
-* `scripts/train_ae_mnist.py` — AE trainer (MNIST).
-* `scripts/train_vae_mnist.py` — VAE trainer (MNIST, KL warmup).
-* `scripts/train_ddpm_mini.py` — DDPM trainer + sampling grid.
-* `tests/test_ae_vae_ddpm.py` — tiny smoke tests for all three.
+* `src/airoad/generative/ae.py` — conv **Autoencoder** (MSE recon)
+* `src/airoad/generative/vae.py` — conv **VAE**, ELBO + warmup helpers
+* `src/airoad/generative/ddpm_mini.py` — tiny **UNet**, scheduler, loss, sampler
+* `scripts/train_ae_mnist.py` — AE trainer (MNIST)
+* `scripts/train_vae_mnist.py` — VAE trainer (MNIST)
+* `scripts/train_ddpm_mini.py` — DDPM trainer + grid sampling
+* `tests/test_ae_vae_ddpm.py` — tiny smoke tests for all three
 
 ---
 
-**Tip:** Save a few sample grids across training runs — you’ll quickly build intuition for how AE/VAEs tend to **reconstruct** while diffusion models **sample** diverse digits from noise.
+**Tip:** Save sample grids across runs — you’ll quickly see that AE/VAEs **reconstruct** observed digits, while diffusion **samples** diverse digits from noise.
+

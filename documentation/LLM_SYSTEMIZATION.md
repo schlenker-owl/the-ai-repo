@@ -1,13 +1,12 @@
-# LLM Systemization — LoRA SFT · RAG Eval · OpenAI-Compatible Server (v0.1)
+# LLM Systemization — LoRA SFT · RAG Eval · OpenAI-Compatible Server (v0.2)
 
-This document explains the **LLM systemization** pieces in **the-ai-repo** (`airoad`):  
+This document explains the **LLM systemization** pieces in **the-ai-repo** (`airoad`):
 - **LoRA SFT** on a tiny model (CPU/MPS-friendly)  
 - **Inference helpers** (base vs LoRA, adapter merge) + **before/after** comparison  
 - **RAG evaluation** (Exact Match, cosine similarity, ROUGE-L) with TF-IDF fallback  
 - **OpenAI-compatible server** for quick local smoke tests
 
-> **Math rendering on GitHub:** inline math goes in `$…$` and display equations go in `$$…$$`.  
-> We keep math concise and practical for learning.
+> **Math on GitHub:** inline math uses `$…$`; display equations use fenced code blocks with `math`.
 
 ---
 
@@ -53,10 +52,10 @@ We fine-tune a tiny Causal LM (e.g., `sshleifer/tiny-gpt2`) on a small, in-repo 
 
 ```math
 \mathcal{L}_{\text{CausalLM}}
-= -\frac{1}{N}\sum_{t=1}^{T}\log p_\theta(x_t \mid x_{<t}).
+= -\frac{1}{T}\sum_{t=1}^{T}\log p_\theta(x_t \mid x_{<t}).
 ```
 
-LoRA injects a **low-rank** adapter into certain linear projections:
+LoRA injects a **low-rank** adapter into linear projections:
 
 ```math
 W^\star
@@ -74,8 +73,8 @@ This reduces trainable parameters while preserving base weights.
 **Paths**
 
 * Inference helpers: `src/airoad/sft/infer.py`
-* Compare before/after: `scripts/sft_compare_generate.py`
-* Toy eval (quant): `scripts/sft_eval_toy.py`
+* Before/After qualitative compare: `scripts/sft_compare_generate.py`
+* Toy SFT evaluation (quant): `scripts/sft_eval_toy.py`
 
 With `infer.py` you can:
 
@@ -91,20 +90,20 @@ With `infer.py` you can:
 **Paths**
 
 * RAG eval utilities: `src/airoad/rag/eval.py`
-* RAG demo script: `scripts/rag_eval_demo.py`
+* Demo: `scripts/rag_eval_demo.py`
 
 We provide small, dependency-light metrics:
 
 **Exact Match (EM)** (case-insensitive):
 
 ```math
-\mathrm{EM}(\hat{y}, y) = \mathbf{1}\{\mathrm{lower}(\hat{y}) = \mathrm{lower}(y)\}.
+\mathrm{EM}(\hat{y}, y) \;=\; \mathbf{1}\{\mathrm{lower}(\hat{y}) = \mathrm{lower}(y)\}.
 ```
 
-**Cosine Similarity** (with SentenceTransformers or TF-IDF fallback):
+**Cosine Similarity** (ST embeddings or TF-IDF fallback):
 
 ```math
-\cos(\mathbf{a}, \mathbf{b}) = \frac{\mathbf{a}^\top \mathbf{b}}{\lVert \mathbf{a} \rVert\;\lVert \mathbf{b} \rVert }.
+\cos(\mathbf{a}, \mathbf{b}) = \frac{\mathbf{a}^\top \mathbf{b}}{\lVert \mathbf{a} \rVert \,\lVert \mathbf{b} \rVert }.
 ```
 
 **ROUGE-L F-score** (token LCS):
@@ -126,9 +125,9 @@ Retrieval uses normalized embeddings when available; otherwise TF-IDF with cosin
 
 **Path**
 
-* FastAPI server: `scripts/serve_openai_compat.py`
+* `scripts/serve_openai_compat.py`
 
-A tiny, local server exposing `POST /v1/chat/completions`. It backs responses with:
+A tiny local server exposing `POST /v1/chat/completions`. It backs responses with:
 
 * Your **GPTTiny** char-model (if importable), or
 * An **echo fallback** when the tiny model isn’t available.
@@ -182,14 +181,11 @@ uv run python scripts/serve_openai_compat.py --host 0.0.0.0 --port 8000
 
 ## Tests & Acceptance Gates
 
-* **SFT prep** (`tests/test_sft_prep.py`):
-  Formatting + dataset generation sanity, **no downloads**.
-* **SFT eval metrics** (`tests/test_sft_eval_metrics.py`):
-  EM and ROUGE-L shapes & ranges.
-* **RAG metrics** (`tests/test_rag_eval_metrics.py`):
-  TF-IDF fallback ranks the right doc; shapes for `evaluate_qa`.
+* **SFT prep** (`tests/test_sft_prep.py`) — formatting & dataset generation; **no downloads**.
+* **SFT eval metrics** (`tests/test_sft_eval_metrics.py`) — EM and ROUGE-L shape/range.
+* **RAG metrics** (`tests/test_rag_eval_metrics.py`) — TF-IDF fallback ranks the right doc; `evaluate_qa` fields intact.
 
-> LoRA training is not unit-tested end-to-end (requires network). You can run the script manually, then evaluate with the **toy eval**.
+> LoRA training itself is not unit-tested (needs network); run the script manually, then evaluate with the toy metrics.
 
 ---
 
@@ -197,7 +193,7 @@ uv run python scripts/serve_openai_compat.py --host 0.0.0.0 --port 8000
 
 * **SFT (training + infer)**
 
-  * `src/airoad/sft/lora_sft.py` — LoRA SFT (version-robust TRL / Trainer)
+  * `src/airoad/sft/lora_sft.py` — LoRA SFT (TRL or plain HF `Trainer`, version-robust)
   * `src/airoad/sft/infer.py` — load base, load+LoRA, merge, generate
   * `src/airoad/sft/eval_sft.py` — EM & ROUGE-L metrics
   * `scripts/sft_lora.py` — train LoRA on a tiny base
@@ -207,7 +203,7 @@ uv run python scripts/serve_openai_compat.py --host 0.0.0.0 --port 8000
 * **RAG**
 
   * `src/airoad/rag/eval.py` — exact match, cosine, retrieval (ST/TF-IDF), `evaluate_qa`
-  * `scripts/rag_eval_demo.py` — tiny retrieval and scoring demo
+  * `scripts/rag_eval_demo.py` — tiny retrieval + scoring demo
 
 * **Server**
 
@@ -221,11 +217,11 @@ uv run python scripts/serve_openai_compat.py --host 0.0.0.0 --port 8000
 
 ## Next Steps
 
-* **Adapter merging demo** in `sft_compare_generate.py` already merges & saves; add a **“merged-only inference”** script if preferred.
-* Add a tiny **RAG generate loop** that combines retriever + generator and scores with `evaluate_qa`.
-* Introduce **prompt templates** (Alpaca/ChatML) and **stop sequences** for cleaner generations.
-* Add **quantization (4-bit/8-bit)** notes for larger bases when you move past tiny models.
-* (Later) Upgrade to transformers v5 and switch to `processing_class` in `Trainer`.
+* **Adapter merging demo** already supported — add a **“merged-only inference”** script if preferred.
+* Add a tiny **RAG generate** loop (retriever + generator) and score with `evaluate_qa`.
+* Introduce **prompt templates** (Alpaca / ChatML) and **stop sequences** for cleaner generations.
+* Add **quantization** notes (4-bit/8-bit) for larger bases when you move beyond tiny models.
+* (Later) Upgrade to transformers v5 and switch `Trainer(..., tokenizer=tok)` → `processing_class=tok`.
 
 **Goal:** keep everything **local-first**, **minutes-to-run**, and **educational** — the same rhythm your repo nails across ML/DL/LLMs.
 
