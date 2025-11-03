@@ -2,7 +2,7 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Optional
-from airoad.models.tree_gini import DecisionTreeGini
+from airoad.classic.tree.tree_gini import DecisionTreeGini
 
 @dataclass
 class RandomForestClassifier:

@@ -1,5 +1,5 @@
 import typer, numpy as np
-from airoad.models.ridge_lasso import ridge_closed_form, ridge_gd, lasso_coordinate_descent
+from airoad.classic.linear.ridge_lasso import ridge_closed_form, ridge_gd, lasso_coordinate_descent
 
 app = typer.Typer(add_completion=False)
 

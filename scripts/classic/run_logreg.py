@@ -1,6 +1,6 @@
 import typer
 from airoad.datasets.toy import make_classification_2d, standardize
-from airoad.models.logreg_numpy import LogisticRegressionGD
+from airoad.classic.linear.logreg_numpy import LogisticRegressionGD
 
 app = typer.Typer(add_completion=False)
 

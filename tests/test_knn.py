@@ -1,5 +1,5 @@
 import numpy as np
-from airoad.models.knn import KNNClassifier, KNNRegressor
+from airoad.classic.neighbors.knn import KNNClassifier, KNNRegressor
 
 def test_knn_classifier_acc():
     rng = np.random.default_rng(0)

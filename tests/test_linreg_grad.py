@@ -1,5 +1,5 @@
 import numpy as np
-from airoad.models.linreg_numpy import LinearRegressionGD
+from airoad.classic.linear.linreg_numpy import LinearRegressionGD
 
 def numerical_grad(X, y, W, eps=1e-6):
     # L(W) = mean((XW - y)^2)

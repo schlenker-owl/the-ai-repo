@@ -2,7 +2,7 @@
 import typer, torch, torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
-from airoad.dl.cnn_torch import SimpleCNN
+from airoad.vision.cnn_torch import SimpleCNN
 from airoad.utils.device import pick_device
 
 app = typer.Typer(add_completion=False)

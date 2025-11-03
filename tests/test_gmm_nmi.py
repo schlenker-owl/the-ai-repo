@@ -1,5 +1,5 @@
 import numpy as np
-from airoad.models.gmm import GMM, normalized_mutual_info
+from airoad.unsupervised.gmm import GMM, normalized_mutual_info
 
 def make_blobs(n=300, k=3, d=2, sep=5.0, seed=0):
     rng = np.random.default_rng(seed)

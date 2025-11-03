@@ -1,5 +1,5 @@
 import numpy as np
-from airoad.models.tree_gini import DecisionTreeGini
+from airoad.classic.tree.tree_gini import DecisionTreeGini
 
 def make_xor(n=400, seed=0):
     rng = np.random.default_rng(seed)

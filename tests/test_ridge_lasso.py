@@ -1,5 +1,5 @@
 import numpy as np
-from airoad.models.ridge_lasso import ridge_closed_form, ridge_gd, lasso_coordinate_descent
+from airoad.classic.linear.ridge_lasso import ridge_closed_form, ridge_gd, lasso_coordinate_descent
 
 def test_ridge_closed_form_vs_gd():
     rng = np.random.default_rng(1)

@@ -1,5 +1,5 @@
 import numpy as np
-from airoad.models.linear_svm import LinearSVM
+from airoad.classic.linear.linear_svm import LinearSVM
 
 def make_linear_sep(n=300, d=4, margin=0.6, seed=0):
     rng = np.random.default_rng(seed)

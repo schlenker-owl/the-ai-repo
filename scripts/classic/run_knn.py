@@ -1,5 +1,5 @@
 import typer, numpy as np
-from airoad.models.knn import KNNClassifier, KNNRegressor
+from airoad.classic.neighbors.knn import KNNClassifier, KNNRegressor
 
 app = typer.Typer(add_completion=False)
 

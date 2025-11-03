@@ -1,7 +1,7 @@
 import typer
 import numpy as np
 from airoad.datasets.toy import make_linear_regression, standardize
-from airoad.models.linreg_numpy import LinearRegressionGD
+from airoad.classic.linear.linreg_numpy import LinearRegressionGD
 
 app = typer.Typer(add_completion=False)
 
