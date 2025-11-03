@@ -1,3 +1,4 @@
+# src/airoad/sft/lora_sft.py
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
@@ -40,7 +41,7 @@ def build_alpaca_like_examples() -> List[Dict[str, str]]:
 
 
 # ---------------------------
-# Training (lazy imports)
+# Training (version-robust)
 # ---------------------------
 
 @dataclass
@@ -65,8 +66,7 @@ def run_lora_sft(cfg: SFTConfig) -> None:
     """
     try:
         from transformers import (
-            AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments,
-            DataCollatorForLanguageModeling
+            AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
         )
     except Exception as e:
         raise RuntimeError("Transformers required: pip install transformers") from e
@@ -78,14 +78,16 @@ def run_lora_sft(cfg: SFTConfig) -> None:
 
     # Optional TRL (SFTTrainer)
     has_trl = False
+    SFTTrainer = None
     if cfg.use_trl:
         try:
-            from trl import SFTTrainer
+            from trl import SFTTrainer as _SFTTrainer
+            SFTTrainer = _SFTTrainer
             has_trl = True
         except Exception:
             has_trl = False
 
-    # Build tiny dataset
+    # Build tiny dataset (no downloads)
     pairs = [format_example(ex) for ex in build_alpaca_like_examples()]
     texts = [(p + t) for (p, t) in pairs]
 
@@ -95,65 +97,80 @@ def run_lora_sft(cfg: SFTConfig) -> None:
         tok.pad_token = tok.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(cfg.base_model)
+
+    # Apply LoRA (GPT-2 tiny: target c_attn & c_proj; fan_in_fan_out=True for Conv1D)
     lconf = LoraConfig(
         r=cfg.lora_r, lora_alpha=cfg.lora_alpha, lora_dropout=cfg.lora_dropout,
-        target_modules=["c_attn", "q_attn", "v_attn", "k_proj", "v_proj", "q_proj", "o_proj"],  # robust across small GPT-ish models
-        bias="none", task_type="CAUSAL_LM"
+        target_modules=["c_attn", "c_proj"],
+        bias="none", task_type="CAUSAL_LM", fan_in_fan_out=True
     )
     model = get_peft_model(model, lconf)
 
-    # Tokenize once
+    # TrainingArguments (for both TRL and plain Trainer)
+    args = TrainingArguments(
+        output_dir=cfg.output_dir,
+        per_device_train_batch_size=cfg.batch_size,
+        gradient_accumulation_steps=cfg.gradient_accumulation_steps,
+        max_steps=cfg.max_steps,
+        learning_rate=cfg.learning_rate,
+        logging_steps=10,
+        save_steps=0,
+        report_to=[],
+    )
+
+    # ---------- Try TRL SFTTrainer with multiple signatures ----------
+    if has_trl and SFTTrainer is not None:
+        dataset = [{"text": t} for t in texts]
+        # 1) Newer TRL signature
+        try:
+            trainer = SFTTrainer(
+                model=model,
+                args=args,
+                train_dataset=dataset,
+                tokenizer=tok,
+                max_seq_length=cfg.max_seq_len,
+                packing=False,
+                dataset_text_field="text",
+            )
+            trainer.train()
+            trainer.save_model(cfg.output_dir)
+            return
+        except TypeError:
+            pass
+        # 2) Older TRL: no dataset_text_field, maybe no tokenizer kwarg
+        try:
+            trainer = SFTTrainer(
+                model=model,
+                args=args,
+                train_dataset=dataset,
+                max_seq_length=cfg.max_seq_len,
+                packing=False,
+            )
+            trainer.train()
+            trainer.save_model(cfg.output_dir)
+            return
+        except Exception:
+            # fallthrough to plain Trainer
+            has_trl = False
+
+    # ---------- Plain HF Trainer fallback (robust across environments) ----------
     enc = tok(texts, truncation=True, max_length=cfg.max_seq_len, padding=True, return_tensors=None)
     train_dataset = [{"input_ids": ids, "attention_mask": am} for ids, am in zip(enc["input_ids"], enc["attention_mask"])]
 
-    if has_trl:
-        trainer = SFTTrainer(
-            model=model,
-            tokenizer=tok,
-            train_dataset=[{"text": t} for t in texts],
-            max_seq_length=cfg.max_seq_len,
-            packing=False,
-            args=dict(  # SFTTrainer accepts dict-like args
-                output_dir=cfg.output_dir,
-                per_device_train_batch_size=cfg.batch_size,
-                gradient_accumulation_steps=cfg.gradient_accumulation_steps,
-                max_steps=cfg.max_steps,
-                learning_rate=cfg.learning_rate,
-                logging_steps=10,
-                save_steps=0,
-                report_to=[],
-            ),
-        )
-        trainer.train()
-        trainer.save_model(cfg.output_dir)
-    else:
-        # Plain Trainer fallback
-        def collate(batch):
-            import torch
-            # Right-pad to same length in batch
-            maxlen = max(len(b["input_ids"]) for b in batch)
-            ids = []
-            attn = []
-            for b in batch:
-                pad_len = maxlen - len(b["input_ids"])
-                ids.append(b["input_ids"] + [tok.eos_token_id] * pad_len)
-                attn.append(b["attention_mask"] + [1] * pad_len)
-            return {
-                "input_ids": torch.tensor(ids, dtype=torch.long),
-                "attention_mask": torch.tensor(attn, dtype=torch.long),
-                "labels": torch.tensor(ids, dtype=torch.long),
-            }
+    def collate(batch):
+        import torch
+        maxlen = max(len(b["input_ids"]) for b in batch)
+        ids, attn = [], []
+        for b in batch:
+            pad_len = maxlen - len(b["input_ids"])
+            ids.append(b["input_ids"] + [tok.eos_token_id] * pad_len)
+            attn.append(b["attention_mask"] + [1] * pad_len)
+        return {
+            "input_ids": torch.tensor(ids, dtype=torch.long),
+            "attention_mask": torch.tensor(attn, dtype=torch.long),
+            "labels": torch.tensor(ids, dtype=torch.long),
+        }
 
-        args = TrainingArguments(
-            output_dir=cfg.output_dir,
-            per_device_train_batch_size=cfg.batch_size,
-            gradient_accumulation_steps=cfg.gradient_accumulation_steps,
-            max_steps=cfg.max_steps,
-            learning_rate=cfg.learning_rate,
-            logging_steps=10,
-            save_steps=0,
-            report_to=[],
-        )
-        trainer = Trainer(model=model, args=args, train_dataset=train_dataset, data_collator=collate, tokenizer=tok)
-        trainer.train()
-        trainer.save_model(cfg.output_dir)
+    trainer = Trainer(model=model, args=args, train_dataset=train_dataset, data_collator=collate, tokenizer=tok)
+    trainer.train()
+    trainer.save_model(cfg.output_dir)
