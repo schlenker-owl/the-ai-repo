@@ -1,5 +1,8 @@
-import torch, torch.nn as nn
-from airoad.seq2seq.attn_seq2seq import ToySeqConfig, AttnSeq2Seq, toy_reverse_batch
+import torch
+import torch.nn as nn
+
+from airoad.seq2seq.attn_seq2seq import AttnSeq2Seq, ToySeqConfig, toy_reverse_batch
+
 
 def test_seq2seq_one_step_improves_loss():
     cfg = ToySeqConfig()
@@ -11,7 +14,9 @@ def test_seq2seq_one_step_improves_loss():
     logits = model(x, x_lens, y_in, enc_mask)
     loss0 = loss_fn(logits.reshape(-1, cfg.vocab_size), y_out.reshape(-1))
 
-    opt.zero_grad(); loss0.backward(); opt.step()
+    opt.zero_grad()
+    loss0.backward()
+    opt.step()
 
     logits2 = model(x, x_lens, y_in, enc_mask)
     loss1 = loss_fn(logits2.reshape(-1, cfg.vocab_size), y_out.reshape(-1))

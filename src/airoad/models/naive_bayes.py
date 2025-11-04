@@ -1,14 +1,17 @@
 # src/airoad/models/naive_bayes.py
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
+
+import numpy as np
+
 
 @dataclass
 class GaussianNB:
     eps: float = 1e-9
     class_prior_: np.ndarray | None = None  # (K,)
-    theta_: np.ndarray | None = None        # (K,d) means
-    var_: np.ndarray | None = None          # (K,d) variances
+    theta_: np.ndarray | None = None  # (K,d) means
+    var_: np.ndarray | None = None  # (K,d) variances
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         X = np.asarray(X, dtype=np.float64)
@@ -37,8 +40,10 @@ class GaussianNB:
         jll = np.zeros((X.shape[0], K))
         for k in range(K):
             # log N(x|mu, var) = -0.5 * [sum log(2π var) + sum (x-mu)^2/var]
-            logp = -0.5 * (np.log(2.0*np.pi*self.var_[k]).sum() +
-                           ((X - self.theta_[k])**2 / self.var_[k]).sum(axis=1))
+            logp = -0.5 * (
+                np.log(2.0 * np.pi * self.var_[k]).sum()
+                + ((X - self.theta_[k]) ** 2 / self.var_[k]).sum(axis=1)
+            )
             jll[:, k] = np.log(self.class_prior_[k] + 1e-12) + logp
         return jll
 
@@ -54,7 +59,7 @@ class GaussianNB:
 class MultinomialNB:
     alpha: float = 1.0  # Laplace smoothing
     class_log_prior_: np.ndarray | None = None  # (K,)
-    feature_log_prob_: np.ndarray | None = None # (K,d)
+    feature_log_prob_: np.ndarray | None = None  # (K,d)
 
     def fit(self, X: np.ndarray, y: np.ndarray):
         X = np.asarray(X, dtype=np.float64)

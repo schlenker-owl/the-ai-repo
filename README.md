@@ -2,7 +2,7 @@
 
 Learn modern **Machine Learning** and **LLMs** by building them from the ground up. This repo is **local-first** (Apple Silicon **MPS**/CPU), **uv-managed**, and organized as fast, reproducible labs that run in minutes. Each module includes small, focused scripts and tiny tests so you understand *how and why* things work before scaling.
 
-> **Import name:** `airoad` (under `src/airoad`)  
+> **Import name:** `airoad` (under `src/airoad`)
 > **Distribution name (project):** `airepo` (in `pyproject.toml`)
 
 ---

@@ -2,8 +2,8 @@
 
 A gentle, **hands-on** path through three foundational generative families:
 
-- **Autoencoder (AE)** — reconstruct inputs; learn compressed codes.  
-- **Variational Autoencoder (VAE)** — probabilistic latent variable model; **ELBO** training with **KL warmup**.  
+- **Autoencoder (AE)** — reconstruct inputs; learn compressed codes.
+- **Variational Autoencoder (VAE)** — probabilistic latent variable model; **ELBO** training with **KL warmup**.
 - **DDPM-Mini** — tiny diffusion model (28×28) with a very small UNet and just a few timesteps.
 
 Everything runs quickly on **Apple Silicon (MPS)** or CPU and includes tiny tests.
@@ -13,12 +13,12 @@ Everything runs quickly on **Apple Silicon (MPS)** or CPU and includes tiny test
 ---
 
 ## Contents
-1. [Environment](#environment)  
-2. [Autoencoder (AE)](#autoencoder-ae)  
-3. [Variational Autoencoder (VAE)](#variational-autoencoder-vae)  
-4. [DDPM-Mini (diffusion)](#ddpm-mini-diffusion)  
-5. [Acceptance Gates & Tests](#acceptance-gates--tests)  
-6. [Learn-By-Tweaking](#learn-by-tweaking)  
+1. [Environment](#environment)
+2. [Autoencoder (AE)](#autoencoder-ae)
+3. [Variational Autoencoder (VAE)](#variational-autoencoder-vae)
+4. [DDPM-Mini (diffusion)](#ddpm-mini-diffusion)
+5. [Acceptance Gates & Tests](#acceptance-gates--tests)
+6. [Learn-By-Tweaking](#learn-by-tweaking)
 7. [File Map](#file-map)
 
 ---
@@ -219,4 +219,3 @@ uv run pytest -q
 ---
 
 **Tip:** Save sample grids across runs — you’ll quickly see that AE/VAEs **reconstruct** observed digits, while diffusion **samples** diverse digits from noise.
-

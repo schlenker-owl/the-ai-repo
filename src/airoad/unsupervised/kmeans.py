@@ -1,7 +1,9 @@
 # src/airoad/unsupervised/kmeans.py
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
+
+import numpy as np
 
 
 def _pairwise_sq_dists(X: np.ndarray, C: np.ndarray) -> np.ndarray:
@@ -11,8 +13,8 @@ def _pairwise_sq_dists(X: np.ndarray, C: np.ndarray) -> np.ndarray:
     """
     X = np.asarray(X, dtype=np.float64)
     C = np.asarray(C, dtype=np.float64)
-    x2 = (X * X).sum(axis=1, keepdims=True)          # (n,1)
-    c2 = (C * C).sum(axis=1, keepdims=True).T        # (1,k)
+    x2 = (X * X).sum(axis=1, keepdims=True)  # (n,1)
+    c2 = (C * C).sum(axis=1, keepdims=True).T  # (1,k)
     return x2 + c2 - 2.0 * (X @ C.T)
 
 
@@ -39,7 +41,7 @@ def _kmeans_plus_plus_init(X: np.ndarray, k: int, rng: np.random.Generator) -> n
             idx = rng.choice(n, p=probs)
         C[j] = X[idx]
         # update D to nearest chosen center so far
-        D = np.minimum(D, _pairwise_sq_dists(X, C[j:j + 1]).ravel())
+        D = np.minimum(D, _pairwise_sq_dists(X, C[j : j + 1]).ravel())
     return C
 
 
@@ -61,14 +63,14 @@ def _lloyd_iterations(
 
     for _ in range(max_iter):
         # E-step: assign to nearest center
-        D = _pairwise_sq_dists(X, C)            # (n,k)
-        new_labels = D.argmin(axis=1)           # (n,)
+        D = _pairwise_sq_dists(X, C)  # (n,k)
+        new_labels = D.argmin(axis=1)  # (n,)
 
         # M-step: recompute centers (with empty-cluster handling)
         C_new = np.empty_like(C)
-        Dmin = D.min(axis=1)                    # (n,) used for reseeding
+        Dmin = D.min(axis=1)  # (n,) used for reseeding
         for j in range(k):
-            mask = (new_labels == j)
+            mask = new_labels == j
             if mask.any():
                 C_new[j] = X[mask].mean(axis=0)
             else:
@@ -96,11 +98,11 @@ class KMeans:
     n_clusters: int
     max_iter: int = 100
     tol: float = 1e-4
-    init: str = "kmeans++"     # "kmeans++" or "random"
-    n_init: int = 5            # multiple restarts; keep best by inertia
+    init: str = "kmeans++"  # "kmeans++" or "random"
+    n_init: int = 5  # multiple restarts; keep best by inertia
     random_state: int = 0
 
-    cluster_centers_: np.ndarray | None = None   # (k, d)
+    cluster_centers_: np.ndarray | None = None  # (k, d)
     inertia_: float | None = None
 
     def fit(self, X: np.ndarray):
@@ -114,7 +116,6 @@ class KMeans:
 
         best_inertia = np.inf
         best_C = None
-        best_labels = None
 
         base_rng = np.random.default_rng(self.random_state)
 
@@ -135,7 +136,6 @@ class KMeans:
             if inertia < best_inertia:
                 best_inertia = inertia
                 best_C = C
-                best_labels = labels
 
         self.cluster_centers_ = best_C
         self.inertia_ = float(best_inertia)

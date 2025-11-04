@@ -1,6 +1,8 @@
 # src/airoad/transformers/gpt_tiny.py
 from __future__ import annotations
+
 import math
+
 import torch
 import torch.nn as nn
 
@@ -42,9 +44,9 @@ class CausalSelfAttention(nn.Module):
         att = torch.softmax(att, dim=-1)
         att = self.attn_drop(att)
 
-        y = att @ v                                                  # (B,nH,T,Hd)
-        y = y.transpose(1, 2).contiguous().view(B, T, C)             # (B,T,C)
-        y = self.resid_drop(self.proj(y))                            # (B,T,C)
+        y = att @ v  # (B,nH,T,Hd)
+        y = y.transpose(1, 2).contiguous().view(B, T, C)  # (B,T,C)
+        y = self.resid_drop(self.proj(y))  # (B,T,C)
         return y
 
 
@@ -102,7 +104,7 @@ class GPTTiny(nn.Module):
         x = self.drop(x)
         x = self.blocks(x)
         x = self.ln(x)
-        logits = self.head(x)              # (B,T,V)
+        logits = self.head(x)  # (B,T,V)
         return logits
 
     @torch.no_grad()
@@ -111,7 +113,7 @@ class GPTTiny(nn.Module):
         Autoregressively generate tokens, respecting block_size context window.
         """
         for _ in range(max_new_tokens):
-            idx_cond = idx[:, -self.block_size:]
+            idx_cond = idx[:, -self.block_size :]
             logits = self(idx_cond)
             next_id = torch.distributions.Categorical(logits=logits[:, -1, :]).sample().unsqueeze(1)
             idx = torch.cat([idx, next_id], dim=1)

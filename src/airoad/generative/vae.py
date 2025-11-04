@@ -1,15 +1,19 @@
 from __future__ import annotations
+
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
-from dataclasses import dataclass
 
 
 class ConvEncoder(nn.Module):
     def __init__(self, latent_dim: int):
         super().__init__()
         self.body = nn.Sequential(
-            nn.Conv2d(1, 16, 3, stride=2, padding=1), nn.ReLU(True),   # 14x14
-            nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(True),  # 7x7
+            nn.Conv2d(1, 16, 3, stride=2, padding=1),
+            nn.ReLU(True),  # 14x14
+            nn.Conv2d(16, 32, 3, stride=2, padding=1),
+            nn.ReLU(True),  # 7x7
             nn.Flatten(),
         )
         self.fc_mu = nn.Linear(32 * 7 * 7, latent_dim)
@@ -26,8 +30,10 @@ class ConvDecoder(nn.Module):
         self.fc = nn.Linear(latent_dim, 32 * 7 * 7)
         self.net = nn.Sequential(
             nn.Unflatten(1, (32, 7, 7)),
-            nn.ConvTranspose2d(32, 16, 4, stride=2, padding=1), nn.ReLU(True),  # 14x14
-            nn.ConvTranspose2d(16, 1, 4, stride=2, padding=1), nn.Sigmoid(),    # 28x28 in [0,1]
+            nn.ConvTranspose2d(32, 16, 4, stride=2, padding=1),
+            nn.ReLU(True),  # 14x14
+            nn.ConvTranspose2d(16, 1, 4, stride=2, padding=1),
+            nn.Sigmoid(),  # 28x28 in [0,1]
         )
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
@@ -40,6 +46,7 @@ class ConvVAE(nn.Module):
     Forward is deterministic (z = mu) to reduce variance in optimization/evaluation.
     For stochastic visualization, call sample_decode(x).
     """
+
     def __init__(self, latent_dim: int = 32):
         super().__init__()
         self.enc = ConvEncoder(latent_dim)
@@ -68,8 +75,8 @@ class ConvVAE(nn.Module):
 
 @dataclass
 class VaeLossConfig:
-    beta_max: float = 1.0        # target KL weight at warmup end
-    warmup_steps: int = 200      # linear ramp steps to beta_max
+    beta_max: float = 1.0  # target KL weight at warmup end
+    warmup_steps: int = 200  # linear ramp steps to beta_max
     beta_min_train: float = 1.0  # effective floor used in returned loss
 
 
@@ -108,7 +115,7 @@ def elbo_loss(
 
     elbo = recon + beta * kl
     parts = {
-        "bce": recon.detach(),   # keep key name for training script compatibility
+        "bce": recon.detach(),  # keep key name for training script compatibility
         "kl": kl.detach(),
         "beta": torch.tensor(beta),
     }

@@ -1,8 +1,11 @@
 from __future__ import annotations
-import torch
-import torch.nn as nn
+
 from dataclasses import dataclass
 from typing import Tuple
+
+import torch
+import torch.nn as nn
+
 
 @dataclass
 class ToySeqConfig:
@@ -10,6 +13,7 @@ class ToySeqConfig:
     emb_dim: int = 64
     hidden: int = 128
     pad_id: int = 0
+
 
 class Encoder(nn.Module):
     def __init__(self, cfg: ToySeqConfig):
@@ -19,10 +23,13 @@ class Encoder(nn.Module):
 
     def forward(self, x, lengths):
         emb = self.emb(x)
-        packed = nn.utils.rnn.pack_padded_sequence(emb, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        packed = nn.utils.rnn.pack_padded_sequence(
+            emb, lengths.cpu(), batch_first=True, enforce_sorted=False
+        )
         out, h = self.rnn(packed)
         out, _ = nn.utils.rnn.pad_packed_sequence(out, batch_first=True)
         return out, h  # out: (B,T,H), h: (1,B,H)
+
 
 class AttnDecoder(nn.Module):
     def __init__(self, cfg: ToySeqConfig):
@@ -51,13 +58,14 @@ class AttnDecoder(nn.Module):
         logits = []
         h = h0
         for t in range(T):
-            yt = y_in[:, t:t+1]
+            yt = y_in[:, t : t + 1]
             emb = self.emb(yt)  # (B,1,E)
-            ctx, _ = self._attend(h.transpose(0,1), enc_out, enc_mask)  # dec_h=(B,1,H)
+            ctx, _ = self._attend(h.transpose(0, 1), enc_out, enc_mask)  # dec_h=(B,1,H)
             dec_in = torch.cat([emb, ctx.unsqueeze(1)], dim=-1)
             out, h = self.rnn(dec_in, h)  # out: (B,1,H)
             logits.append(self.proj(out))  # list of (B,1,V)
         return torch.cat(logits, dim=1)  # (B,T,V)
+
 
 class AttnSeq2Seq(nn.Module):
     def __init__(self, cfg: ToySeqConfig):
@@ -71,7 +79,10 @@ class AttnSeq2Seq(nn.Module):
         logits = self.dec(y_in, enc_out, h, enc_mask)
         return logits
 
-def toy_reverse_batch(B=32, T=10, vocab=30, pad_id=0, seed=0) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+def toy_reverse_batch(
+    B=32, T=10, vocab=30, pad_id=0, seed=0
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Returns x, x_lens, y_in, y_out for a toy reverse task.
     x: (B,T) with padding; x_lens: (B,)
@@ -79,8 +90,9 @@ def toy_reverse_batch(B=32, T=10, vocab=30, pad_id=0, seed=0) -> Tuple[torch.Ten
     y_out: (B,T) target reversed sequence
     """
     import numpy as np
+
     rng = np.random.default_rng(seed)
-    lens = rng.integers(low=3, high=T+1, size=B)
+    lens = rng.integers(low=3, high=T + 1, size=B)
     x = np.full((B, T), pad_id, dtype=np.int64)
     y_out = np.full((B, T), pad_id, dtype=np.int64)
     for i, L in enumerate(lens):
@@ -90,4 +102,10 @@ def toy_reverse_batch(B=32, T=10, vocab=30, pad_id=0, seed=0) -> Tuple[torch.Ten
     y_in = np.roll(y_out, shift=1, axis=1)
     y_in[:, 0] = pad_id
     enc_mask = (x != pad_id).astype(np.int64)
-    return (torch.tensor(x), torch.tensor(lens), torch.tensor(y_in), torch.tensor(y_out), torch.tensor(enc_mask))
+    return (
+        torch.tensor(x),
+        torch.tensor(lens),
+        torch.tensor(y_in),
+        torch.tensor(y_out),
+        torch.tensor(enc_mask),
+    )

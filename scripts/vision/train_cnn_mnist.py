@@ -1,14 +1,24 @@
 # scripts/train_cnn_mnist.py
-import typer, torch, torch.nn as nn
+import torch
+import torch.nn as nn
+import typer
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
-from airoad.vision.cnn_torch import SimpleCNN
+
 from airoad.utils.device import pick_device
+from airoad.vision.cnn_torch import SimpleCNN
 
 app = typer.Typer(add_completion=False)
 
+
 @app.command()
-def main(batch_size: int = 64, lr: float = 1e-3, steps: int = 500, limit_train: int = 5000, limit_test: int = 1000):
+def main(
+    batch_size: int = 64,
+    lr: float = 1e-3,
+    steps: int = 500,
+    limit_train: int = 5000,
+    limit_test: int = 1000,
+):
     dev = pick_device()
     tfm = transforms.Compose([transforms.ToTensor()])
     train = datasets.MNIST(root="data", train=True, download=True, transform=tfm)
@@ -30,16 +40,20 @@ def main(batch_size: int = 64, lr: float = 1e-3, steps: int = 500, limit_train: 
         try:
             x, y = next(it)
         except StopIteration:
-            it = iter(dl); x, y = next(it)
+            it = iter(dl)
+            x, y = next(it)
         x, y = x.to(dev), y.to(dev)
         logits = model(x)
         loss = loss_fn(logits, y)
-        opt.zero_grad(set_to_none=True); loss.backward(); opt.step()
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        opt.step()
         if step % 50 == 0:
             print(f"step {step:04d} loss={loss.item():.4f}")
 
     # quick eval
-    model.eval(); correct = total = 0
+    model.eval()
+    correct = total = 0
     with torch.no_grad():
         for x, y in tl:
             x, y = x.to(dev), y.to(dev)
@@ -47,6 +61,7 @@ def main(batch_size: int = 64, lr: float = 1e-3, steps: int = 500, limit_train: 
             correct += int((pred == y).sum().item())
             total += y.numel()
     print(f"test acc ~ {correct/total:.3f}")
+
 
 if __name__ == "__main__":
     app()

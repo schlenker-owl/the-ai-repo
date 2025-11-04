@@ -1,10 +1,13 @@
-import typer, math
 import numpy as np
-import torch, torch.nn as nn
+import torch
+import torch.nn as nn
+import typer
+
 from airoad.dl.mlp_torch import MLP
 from airoad.utils.device import pick_device
 
 app = typer.Typer(add_completion=False)
+
 
 def make_xor(n: int = 512, seed: int = 0):
     rng = np.random.default_rng(seed)
@@ -13,6 +16,7 @@ def make_xor(n: int = 512, seed: int = 0):
     # standardize
     X = (X - X.mean(0, keepdims=True)) / (X.std(0, keepdims=True) + 1e-8)
     return X.astype(np.float32), y.reshape(-1, 1).astype(np.float32)
+
 
 @app.command()
 def main(steps: int = 300, lr: float = 1e-2, seed: int = 0):
@@ -38,6 +42,7 @@ def main(steps: int = 300, lr: float = 1e-2, seed: int = 0):
         logits = model(X)
         acc = ((logits.sigmoid() >= 0.5).float() == y).float().mean().item()
         typer.echo(f"Final loss: {loss.item():.4f}  Acc: {acc:.3f}  Device: {dev}")
+
 
 if __name__ == "__main__":
     app()

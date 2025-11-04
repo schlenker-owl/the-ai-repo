@@ -1,16 +1,19 @@
 import numpy as np
-from airoad.classic.linear.linreg_numpy import LinearRegressionGD
+
 
 def numerical_grad(X, y, W, eps=1e-6):
     # L(W) = mean((XW - y)^2)
     grad = np.zeros_like(W)
     for i in range(W.shape[0]):
-        Wp = W.copy(); Wp[i, 0] += eps
-        Wm = W.copy(); Wm[i, 0] -= eps
+        Wp = W.copy()
+        Wp[i, 0] += eps
+        Wm = W.copy()
+        Wm[i, 0] -= eps
         Lp = np.mean((X @ Wp - y) ** 2)
         Lm = np.mean((X @ Wm - y) ** 2)
-        grad[i, 0] = (Lp - Lm) / (2 * eps)   # <-- no extra *2
+        grad[i, 0] = (Lp - Lm) / (2 * eps)  # <-- no extra *2
     return grad
+
 
 def test_linreg_gradient_check():
     rng = np.random.default_rng(0)

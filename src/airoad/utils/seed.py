@@ -1,6 +1,9 @@
-import os, random
+import os
+import random
+
 import numpy as np
 import torch
+
 
 def set_seed(seed: int = 42):
     os.environ["PYTHONHASHSEED"] = str(seed)

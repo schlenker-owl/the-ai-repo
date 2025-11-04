@@ -6,9 +6,9 @@ This page summarizes the **MLP** and **CNN** labs in `airoad` with quick math, p
 
 ## MLP (PyTorch)
 
-**Paths**  
-- Code: `src/airoad/dl/mlp_torch.py`  
-- Script: `scripts/train_mlp_torch.py`  
+**Paths**
+- Code: `src/airoad/dl/mlp_torch.py`
+- Script: `scripts/train_mlp_torch.py`
 - Test: `tests/test_mlp_torch.py` (XOR)
 
 ### Intuition
@@ -88,4 +88,3 @@ uv run python scripts/train_cnn_mnist.py --steps 300 --limit-train 4000 --limit-
 * `docs/RNN_LSTM_GRU.md` — sequence models (char-level).
 * `docs/TRANSFORMER_GPT_TINY.md` — causal self-attention, masking, residuals, layer norm.
 * `docs/GENERATIVE.md` — AE · VAE · DDPM-Mini labs.
-

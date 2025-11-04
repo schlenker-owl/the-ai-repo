@@ -1,13 +1,15 @@
 # src/airoad/models/tree_gini.py
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+import numpy as np
 
 # ---------------------------
 # Impurity utilities
 # ---------------------------
+
 
 def _gini_from_counts(cnt: np.ndarray) -> float:
     """Gini impurity from class-counts vector."""
@@ -26,6 +28,7 @@ def _gini_labels(y: np.ndarray, n_classes: int) -> float:
 # ---------------------------
 # Split search (1 feature)
 # ---------------------------
+
 
 def _best_split_feature(x: np.ndarray, y: np.ndarray, n_classes: int) -> Tuple[float, float] | None:
     """
@@ -68,7 +71,9 @@ def _best_split_feature(x: np.ndarray, y: np.ndarray, n_classes: int) -> Tuple[f
     return (float(best_thr), float(best_gain))
 
 
-def _best_split_any_feature(X: np.ndarray, y: np.ndarray, n_classes: int) -> tuple[int, float, float] | None:
+def _best_split_any_feature(
+    X: np.ndarray, y: np.ndarray, n_classes: int
+) -> tuple[int, float, float] | None:
     """Best (feature_index, threshold, gain) across all features; None if no improvement."""
     best = None
     best_gain = 0.0
@@ -87,6 +92,7 @@ def _best_split_any_feature(X: np.ndarray, y: np.ndarray, n_classes: int) -> tup
 # One-step lookahead helpers
 # ---------------------------
 
+
 def _min_impurity_after_one_split(X: np.ndarray, y: np.ndarray, n_classes: int) -> float:
     """
     Minimal weighted impurity achievable on (X,y) after **one** split
@@ -101,7 +107,9 @@ def _min_impurity_after_one_split(X: np.ndarray, y: np.ndarray, n_classes: int) 
     return float(parent_imp - gain)
 
 
-def _two_level_best_total_imp(X: np.ndarray, y: np.ndarray, n_classes: int, min_samples_split: int) -> tuple[Optional[int], Optional[float], float]:
+def _two_level_best_total_imp(
+    X: np.ndarray, y: np.ndarray, n_classes: int, min_samples_split: int
+) -> tuple[Optional[int], Optional[float], float]:
     """
     Evaluate all (feature, threshold) candidates at this node using a **two-level lookahead**:
     For each candidate first split, we compute the minimal child impurities achievable with ONE
@@ -123,7 +131,6 @@ def _two_level_best_total_imp(X: np.ndarray, y: np.ndarray, n_classes: int, min_
 
         # prefix counts
         left_cnt = np.zeros((n_classes,), dtype=np.int64)
-        total_cnt = np.bincount(y_sorted, minlength=n_classes)
 
         for i in range(1, n):
             c = y_sorted[i - 1]
@@ -133,7 +140,8 @@ def _two_level_best_total_imp(X: np.ndarray, y: np.ndarray, n_classes: int, min_
 
             thr = 0.5 * (x_sorted[i] + x_sorted[i - 1])
             idx_left = x <= thr
-            nL = int(idx_left.sum()); nR = n - nL
+            nL = int(idx_left.sum())
+            nR = n - nL
             if nL < min_samples_split or nR < min_samples_split:
                 continue
 
@@ -155,6 +163,7 @@ def _two_level_best_total_imp(X: np.ndarray, y: np.ndarray, n_classes: int, min_
 # ---------------------------
 # Tree
 # ---------------------------
+
 
 @dataclass
 class _Node:
@@ -202,7 +211,11 @@ class DecisionTreeGini:
         pred = int(np.argmax(counts))
 
         # stop if pure / small / depth limit
-        if depth >= self.max_depth or X.shape[0] < self.min_samples_split or counts.max() == X.shape[0]:
+        if (
+            depth >= self.max_depth
+            or X.shape[0] < self.min_samples_split
+            or counts.max() == X.shape[0]
+        ):
             return _Node(is_leaf=True, pred=pred)
 
         parent_imp = _gini_labels(y, self.n_classes)
@@ -217,7 +230,11 @@ class DecisionTreeGini:
         # 2) Two-level lookahead (if depth allows 2 more levels)
         two_feat = two_thr = None
         two_gain = 0.0
-        if self.two_level_lookahead and (depth <= self.max_depth - 2) and (X.shape[0] >= 2 * self.min_samples_split):
+        if (
+            self.two_level_lookahead
+            and (depth <= self.max_depth - 2)
+            and (X.shape[0] >= 2 * self.min_samples_split)
+        ):
             bf, bt, best_total_imp = _two_level_best_total_imp(
                 X, y, self.n_classes, self.min_samples_split
             )

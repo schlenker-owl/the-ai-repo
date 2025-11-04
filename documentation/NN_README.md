@@ -119,4 +119,3 @@ y_t \;=\; \mathrm{Decoder}\big(\,[\mathrm{Embed}(y_{t-1}) \,\|\, c_t],\, h_{t-1}
 
   * **`docs/GENERATIVE.md`** — AE · VAE · DDPM-Mini
   * **`docs/LLM_SYSTEMIZATION.md`** — LoRA SFT · RAG Eval · OpenAI-compatible server
-

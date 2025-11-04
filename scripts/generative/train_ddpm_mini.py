@@ -1,11 +1,16 @@
-import typer, torch
-from torch.utils.data import DataLoader, Subset
-from torchvision import datasets, transforms, utils as tvutils
-from airoad.generative.ddpm_mini import DiffusionSchedule, TinyUNet, diffusion_loss, sample_loop
-from airoad.utils.device import pick_device
 import pathlib
 
+import torch
+import typer
+from torch.utils.data import DataLoader, Subset
+from torchvision import datasets, transforms
+from torchvision import utils as tvutils
+
+from airoad.generative.ddpm_mini import DiffusionSchedule, TinyUNet, diffusion_loss, sample_loop
+from airoad.utils.device import pick_device
+
 app = typer.Typer(add_completion=False)
+
 
 @app.command()
 def main(
@@ -33,7 +38,8 @@ def main(
         try:
             x, _ = next(it)
         except StopIteration:
-            it = iter(dl); x, _ = next(it)
+            it = iter(dl)
+            x, _ = next(it)
         x = x.to(dev)
 
         loss = diffusion_loss(model, sched, x)
@@ -50,6 +56,7 @@ def main(
         pathlib.Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         tvutils.save_image(samples, out_path, nrow=4)
         typer.echo(f"Saved sample grid to: {out_path}")
+
 
 if __name__ == "__main__":
     app()

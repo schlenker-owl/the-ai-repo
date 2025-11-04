@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import List, Optional
+
 
 @dataclass
 class GenConfig:
     max_new_tokens: int = 64
-    temperature: float = 0.0          # greedy by default
+    temperature: float = 0.0  # greedy by default
     top_p: float = 1.0
     do_sample: bool = False
 
@@ -23,6 +25,7 @@ def load_base(model_name: str):
     """
     _require_tf()
     from transformers import AutoModelForCausalLM, AutoTokenizer
+
     tok = AutoTokenizer.from_pretrained(model_name, use_fast=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
@@ -63,14 +66,11 @@ def merge_and_save_lora(model_name: str, lora_dir: str, out_dir: str):
     return out_dir
 
 
-def generate(
-    model, tok, prompts: List[str], cfg: Optional[GenConfig] = None
-) -> List[str]:
+def generate(model, tok, prompts: List[str], cfg: Optional[GenConfig] = None) -> List[str]:
     """
     Generate continuations for a list of prompts.
     """
     _require_tf()
-    import torch
 
     if cfg is None:
         cfg = GenConfig()

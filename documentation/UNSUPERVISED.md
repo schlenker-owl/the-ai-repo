@@ -8,14 +8,14 @@ This guide explains the **unsupervised** modules in **the-ai-repo** (`airoad`) w
 
 ## Contents
 
-1. [Environment](#environment)  
-2. [Principal Component Analysis (PCA)](#principal-component-analysis-pca)  
-3. [K-Means Clustering](#k-means-clustering)  
-4. [Gaussian Mixture Models (GMM, EM)](#gaussian-mixture-models-gmm-em)  
-5. [PCA → K-Means Pipeline](#pca--k-means-pipeline)  
-6. [Tests & Acceptance Gates](#tests--acceptance-gates)  
-7. [Common Pitfalls & Debugging](#common-pitfalls--debugging)  
-8. [Next Steps](#next-steps)  
+1. [Environment](#environment)
+2. [Principal Component Analysis (PCA)](#principal-component-analysis-pca)
+3. [K-Means Clustering](#k-means-clustering)
+4. [Gaussian Mixture Models (GMM, EM)](#gaussian-mixture-models-gmm-em)
+5. [PCA → K-Means Pipeline](#pca--k-means-pipeline)
+6. [Tests & Acceptance Gates](#tests--acceptance-gates)
+7. [Common Pitfalls & Debugging](#common-pitfalls--debugging)
+8. [Next Steps](#next-steps)
 9. [File Map (Unsupervised)](#file-map-unsupervised)
 
 ---

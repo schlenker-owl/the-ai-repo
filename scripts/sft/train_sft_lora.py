@@ -1,7 +1,9 @@
 import typer
+
 from airoad.sft.lora_sft import SFTConfig, run_lora_sft
 
 app = typer.Typer(add_completion=False)
+
 
 @app.command()
 def main(
@@ -31,6 +33,7 @@ def main(
         use_trl=use_trl,
     )
     run_lora_sft(cfg)
+
 
 if __name__ == "__main__":
     app()

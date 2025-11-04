@@ -1,5 +1,6 @@
 import typer
-from airoad.rag.eval import retrieve_topk, evaluate_qa
+
+from airoad.rag.eval import evaluate_qa, retrieve_topk
 
 app = typer.Typer(add_completion=False)
 
@@ -15,6 +16,7 @@ _QA = [
     {"q": "Which city is the capital of Germany?", "ref": "Berlin"},
 ]
 
+
 @app.command()
 def main():
     preds = []
@@ -29,6 +31,7 @@ def main():
         preds.append({"question": ex["q"], "predicted": pred, "reference": ex["ref"]})
     m = evaluate_qa(preds)
     typer.echo(f"RAG demo metrics: {m}")
+
 
 if __name__ == "__main__":
     main()

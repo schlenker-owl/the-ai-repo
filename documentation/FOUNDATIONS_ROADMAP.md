@@ -8,27 +8,27 @@ Welcome! This learning guide covers the **foundational ML & DL** pieces in **the
 
 ## Table of Contents
 
-1. [Environment & Project Basics](#environment--project-basics)  
-2. [Datasets & Standardization](#datasets--standardization)  
-3. [Linear Regression (NumPy, GD)](#linear-regression-numpy-gd)  
-4. [Logistic Regression (NumPy, GD)](#logistic-regression-numpy-gd)  
-5. [Ridge (Closed-Form & GD) and Lasso (CD)](#ridge-closed-form--gd-and-lasso-coordinate-descent)  
-6. [Optimizer Lab: SGD vs Momentum vs Adam](#optimizer-lab-sgd-vs-momentum-vs-adam)  
-7. [Decision Tree (Gini) + Two-Level Lookahead](#decision-tree-gini--twolevel-lookahead)  
-8. [Linear SVM (Hinge + L2)](#linear-svm-hinge--l2)  
-9. [PyTorch MLP (Autodiff Bridge)](#pytorch-mlp-autodiff-bridge)  
-10. [Tiny Transformer & Mini RAG (Optional)](#tiny-transformer--mini-rag-optional)  
-11. [Testing & Acceptance Gates](#testing--acceptance-gates)  
-12. [Quickstart Labs](#quickstart-labs)  
+1. [Environment & Project Basics](#environment--project-basics)
+2. [Datasets & Standardization](#datasets--standardization)
+3. [Linear Regression (NumPy, GD)](#linear-regression-numpy-gd)
+4. [Logistic Regression (NumPy, GD)](#logistic-regression-numpy-gd)
+5. [Ridge (Closed-Form & GD) and Lasso (CD)](#ridge-closed-form--gd-and-lasso-coordinate-descent)
+6. [Optimizer Lab: SGD vs Momentum vs Adam](#optimizer-lab-sgd-vs-momentum-vs-adam)
+7. [Decision Tree (Gini) + Two-Level Lookahead](#decision-tree-gini--twolevel-lookahead)
+8. [Linear SVM (Hinge + L2)](#linear-svm-hinge--l2)
+9. [PyTorch MLP (Autodiff Bridge)](#pytorch-mlp-autodiff-bridge)
+10. [Tiny Transformer & Mini RAG (Optional)](#tiny-transformer--mini-rag-optional)
+11. [Testing & Acceptance Gates](#testing--acceptance-gates)
+12. [Quickstart Labs](#quickstart-labs)
 13. [What to Try Next](#what-to-try-next)
 
 ---
 
 ## Environment & Project Basics
 
-- **Dependency manager:** [`uv`](https://docs.astral.sh/uv) (fast venv + lockfile)  
-- **Import package:** `airoad` (`src/airoad/`)  
-- **Distribution name:** `airepo` (see `pyproject.toml`)  
+- **Dependency manager:** [`uv`](https://docs.astral.sh/uv) (fast venv + lockfile)
+- **Import package:** `airoad` (`src/airoad/`)
+- **Distribution name:** `airepo` (see `pyproject.toml`)
 - **Device:** Apple Silicon **M1/M2/M3** (MPS) or CPU
 
 **Setup**
@@ -332,4 +332,3 @@ uv run python scripts/rag_build_faiss.py
 * `src/airoad/dl/mlp_torch.py` — two-layer MLP (PyTorch)
 * `scripts/*.py` — runnable labs (see sections above)
 * `tests/*.py` — tiny, fast acceptance tests
-

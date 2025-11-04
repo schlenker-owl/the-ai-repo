@@ -1,14 +1,18 @@
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
+
+import numpy as np
+
 
 def _add_bias(X: np.ndarray) -> np.ndarray:
     return np.c_[X, np.ones((X.shape[0], 1))]
 
+
 @dataclass
 class LinearSVM:
-    lam: float = 1e-2        # L2 penalty on weights (not bias)
-    lr: float = 0.1          # step size for subgradient
+    lam: float = 1e-2  # L2 penalty on weights (not bias)
+    lr: float = 0.1  # step size for subgradient
     steps: int = 500
     fit_intercept: bool = True
 
@@ -31,7 +35,7 @@ class LinearSVM:
             reg_mask[-1, 0] = 0.0  # don't penalize bias
 
         for t in range(1, self.steps + 1):
-            margins = y * (Xext @ W)          # (n,1)
+            margins = y * (Xext @ W)  # (n,1)
             mis = (margins < 1.0).astype(np.float64)  # indicator
             # grad = lam*W - (1/n) * sum_{mis} y_i x_i
             grad = self.lam * (reg_mask * W) - (Xext.T @ (y * mis)) / n

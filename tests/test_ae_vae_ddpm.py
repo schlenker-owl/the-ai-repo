@@ -1,14 +1,17 @@
 import torch
 import torch.nn as nn
+
 from airoad.generative.ae import ConvAE
-from airoad.generative.vae import ConvVAE, VaeLossConfig, elbo_loss
 from airoad.generative.ddpm_mini import DiffusionSchedule, TinyUNet, diffusion_loss
+from airoad.generative.vae import ConvVAE, VaeLossConfig, elbo_loss
 
 torch.manual_seed(0)
+
 
 def _toy_batch(B=2):
     # random "images" in [0,1]
     return torch.rand(B, 1, 28, 28)
+
 
 def test_ae_train_step_reduces_mse():
     x = _toy_batch()
@@ -21,10 +24,13 @@ def test_ae_train_step_reduces_mse():
         mse0 = loss_fn(model(x), x).item()
     # one step
     mse = loss_fn(model(x), x)
-    opt.zero_grad(); mse.backward(); opt.step()
+    opt.zero_grad()
+    mse.backward()
+    opt.step()
     with torch.no_grad():
         mse1 = loss_fn(model(x), x).item()
     assert mse1 <= mse0 + 1e-6
+
 
 def test_vae_elbo_step():
     x = _toy_batch()
@@ -38,11 +44,14 @@ def test_vae_elbo_step():
 
     # one step
     loss = loss0
-    opt.zero_grad(); loss.backward(); opt.step()
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
 
     x_hat2, mu2, logvar2 = vae(x)
     loss1, _ = elbo_loss(x, x_hat2, mu2, logvar2, step=10, cfg=cfg)
     assert loss1.item() <= loss0.item() + 1e-6
+
 
 def test_ddpm_loss_and_shapes():
     x = _toy_batch() * 2 - 1  # [-1,1]

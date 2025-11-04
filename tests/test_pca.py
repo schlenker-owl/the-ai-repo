@@ -1,5 +1,7 @@
 import numpy as np
+
 from airoad.unsupervised.pca import PCA
+
 
 def test_pca_variance_and_reconstruction():
     rng = np.random.default_rng(0)

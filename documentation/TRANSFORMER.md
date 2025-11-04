@@ -1,8 +1,8 @@
 # Tiny GPT — Causal Self-Attention from Scratch (v0.2)
 
-**Paths**  
-- Model: `src/airoad/transformers/gpt_tiny.py`  
-- Script: `scripts/train_gpt_tiny.py`  
+**Paths**
+- Model: `src/airoad/transformers/gpt_tiny.py`
+- Script: `scripts/train_gpt_tiny.py`
 - Tests: `tests/test_char_models.py`
 
 ---
@@ -81,4 +81,3 @@ uv run python scripts/train_gpt_tiny.py --steps 300 --block-size 128 --n-layer 2
 * `docs/RNN_LSTM_GRU.md` — recurrent models (char-level)
 * `docs/NN_README.md` — overview of neural labs (MLP/CNN/Seq2Seq/GPT)
 * `docs/LLM_SYSTEMIZATION.md` — LoRA SFT · RAG Eval · OpenAI-compatible server
-

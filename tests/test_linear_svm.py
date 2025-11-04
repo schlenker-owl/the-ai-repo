@@ -1,5 +1,7 @@
 import numpy as np
+
 from airoad.classic.linear.linear_svm import LinearSVM
+
 
 def make_linear_sep(n=300, d=4, margin=0.6, seed=0):
     rng = np.random.default_rng(seed)
@@ -12,6 +14,7 @@ def make_linear_sep(n=300, d=4, margin=0.6, seed=0):
     y = (logits > 0).astype(int)
     X = (X - X.mean(0, keepdims=True)) / (X.std(0, keepdims=True) + 1e-8)
     return X, y
+
 
 def test_svm_linearly_separable():
     X, y = make_linear_sep(n=300, d=5, margin=0.8, seed=3)

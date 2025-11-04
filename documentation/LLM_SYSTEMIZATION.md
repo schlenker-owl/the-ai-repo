@@ -1,9 +1,9 @@
 # LLM Systemization — LoRA SFT · RAG Eval · OpenAI-Compatible Server (v0.2)
 
 This document explains the **LLM systemization** pieces in **the-ai-repo** (`airoad`):
-- **LoRA SFT** on a tiny model (CPU/MPS-friendly)  
-- **Inference helpers** (base vs LoRA, adapter merge) + **before/after** comparison  
-- **RAG evaluation** (Exact Match, cosine similarity, ROUGE-L) with TF-IDF fallback  
+- **LoRA SFT** on a tiny model (CPU/MPS-friendly)
+- **Inference helpers** (base vs LoRA, adapter merge) + **before/after** comparison
+- **RAG evaluation** (Exact Match, cosine similarity, ROUGE-L) with TF-IDF fallback
 - **OpenAI-compatible server** for quick local smoke tests
 
 > **Math on GitHub:** inline math uses `$…$`; display equations use fenced code blocks with `math`.
@@ -11,14 +11,14 @@ This document explains the **LLM systemization** pieces in **the-ai-repo** (`air
 ---
 
 ## Contents
-1. [Environment](#environment)  
-2. [LoRA SFT (Tiny, CPU/MPS-Friendly)](#lora-sft-tiny-cpumps-friendly)  
-3. [Inference, Adapters, and Merge](#inference-adapters-and-merge)  
-4. [RAG Evaluation (EM, Cosine, ROUGE-L)](#rag-evaluation-em-cosine-rouge-l)  
-5. [OpenAI-Compatible Server](#openai-compatible-server)  
-6. [Quickstart Commands](#quickstart-commands)  
-7. [Tests & Acceptance Gates](#tests--acceptance-gates)  
-8. [File Map](#file-map)  
+1. [Environment](#environment)
+2. [LoRA SFT (Tiny, CPU/MPS-Friendly)](#lora-sft-tiny-cpumps-friendly)
+3. [Inference, Adapters, and Merge](#inference-adapters-and-merge)
+4. [RAG Evaluation (EM, Cosine, ROUGE-L)](#rag-evaluation-em-cosine-rouge-l)
+5. [OpenAI-Compatible Server](#openai-compatible-server)
+6. [Quickstart Commands](#quickstart-commands)
+7. [Tests & Acceptance Gates](#tests--acceptance-gates)
+8. [File Map](#file-map)
 9. [Next Steps](#next-steps)
 
 ---
@@ -224,4 +224,3 @@ uv run python scripts/serve_openai_compat.py --host 0.0.0.0 --port 8000
 * (Later) Upgrade to transformers v5 and switch `Trainer(..., tokenizer=tok)` → `processing_class=tok`.
 
 **Goal:** keep everything **local-first**, **minutes-to-run**, and **educational** — the same rhythm your repo nails across ML/DL/LLMs.
-

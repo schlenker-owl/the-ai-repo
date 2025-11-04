@@ -1,6 +1,9 @@
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
+
+import numpy as np
+
 
 @dataclass
 class StandardizeResult:
@@ -8,10 +11,12 @@ class StandardizeResult:
     mean: np.ndarray
     std: np.ndarray
 
+
 def standardize(X: np.ndarray, eps: float = 1e-8) -> StandardizeResult:
     mean = X.mean(axis=0, keepdims=True)
     std = X.std(axis=0, keepdims=True) + eps
     return StandardizeResult((X - mean) / std, mean.squeeze(0), std.squeeze(0))
+
 
 def make_linear_regression(n: int = 200, d: int = 1, noise: float = 0.1, seed: int = 42):
     rng = np.random.default_rng(seed)
@@ -21,7 +26,10 @@ def make_linear_regression(n: int = 200, d: int = 1, noise: float = 0.1, seed: i
     y = X @ w_true + b_true + noise * rng.normal(size=(n, 1))
     return X.astype(np.float64), y.squeeze(1).astype(np.float64), w_true.squeeze(1), float(b_true)
 
-def make_classification_2d(n: int = 300, margin: float = 0.5, seed: int = 42, flip_prob: float = 0.0):
+
+def make_classification_2d(
+    n: int = 300, margin: float = 0.5, seed: int = 42, flip_prob: float = 0.0
+):
     """
     Generate a *linearly separable* 2D dataset whose separation increases with `margin`.
     We first compute logits = X·w + b, then push each point away from the boundary by adding

@@ -11,8 +11,10 @@ Notes:
   - Uses GPTTiny from your repo if importable; else echoes last user content.
   - Not covered by tests; meant as a dev-time smoke server.
 """
+
 import argparse
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 
 def build_app():
     try:
@@ -23,9 +25,10 @@ def build_app():
 
     # lazy import to avoid test-time failures
     try:
-        import torch
-        from airoad.transformers.gpt_tiny import GPTTiny
+
         from airoad.dl.char_data import build_vocab_from_text
+        from airoad.transformers.gpt_tiny import GPTTiny
+
         _HAS_MODEL = True
     except Exception:
         _HAS_MODEL = False
@@ -52,7 +55,13 @@ def build_app():
             return {
                 "id": "chatcmpl-fallback",
                 "object": "chat.completion",
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": f"(echo) {last}"}, "finish_reason": "stop"}],
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": f"(echo) {last}"},
+                        "finish_reason": "stop",
+                    }
+                ],
                 "model": req.model,
             }
 
@@ -62,21 +71,33 @@ def build_app():
         # map characters to IDs
         ids = [vocab.stoi.get(ch, 0) for ch in (last[:32] or "h")]
         import torch
+
         x = torch.tensor([ids], dtype=torch.long, device=dev)
 
-        model = GPTTiny(vocab_size=vocab.size, block_size=64, n_layer=1, n_head=2, n_embd=32).to(dev)
-        out_ids = model.generate(x, max_new_tokens=min(50, req.max_tokens or 50)).squeeze(0).tolist()
+        model = GPTTiny(vocab_size=vocab.size, block_size=64, n_layer=1, n_head=2, n_embd=32).to(
+            dev
+        )
+        out_ids = (
+            model.generate(x, max_new_tokens=min(50, req.max_tokens or 50)).squeeze(0).tolist()
+        )
         inv = {i: ch for i, ch in enumerate(vocab.itos)}
         text = "".join(inv.get(i, "?") for i in out_ids)
 
         return {
             "id": "chatcmpl-tiny",
             "object": "chat.completion",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": text},
+                    "finish_reason": "stop",
+                }
+            ],
             "model": req.model,
         }
 
     return app
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -86,7 +107,9 @@ def main():
 
     app = build_app()
     import uvicorn
+
     uvicorn.run(app, host=args.host, port=args.port)
+
 
 if __name__ == "__main__":
     main()

@@ -1,9 +1,13 @@
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
+
+import numpy as np
+
 
 def _add_bias(X: np.ndarray) -> np.ndarray:
     return np.c_[X, np.ones((X.shape[0], 1))]
+
 
 def _sigmoid(z: np.ndarray) -> np.ndarray:
     # numerically stable sigmoid
@@ -14,6 +18,7 @@ def _sigmoid(z: np.ndarray) -> np.ndarray:
     expz = np.exp(z[neg])
     out[neg] = expz / (1.0 + expz)
     return out
+
 
 @dataclass
 class LogisticRegressionGD:
@@ -35,7 +40,7 @@ class LogisticRegressionGD:
             logits = X_ext @ W
             p = _sigmoid(logits)
             # gradient of BCE with L2 on weights (not bias)
-            err = (p - y)  # (n,1)
+            err = p - y  # (n,1)
             grad = (X_ext.T @ err) / n
             if self.fit_intercept:
                 grad[:-1, :] += (self.l2 / n) * W[:-1, :]

@@ -1,18 +1,15 @@
 # src/airoad/sft/lora_sft.py
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import List, Dict, Tuple
 
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
 
 # ---------------------------
 # Formatting / data prep
 # ---------------------------
 
-INSTR_PROMPT = (
-    "### Instruction:\n{instruction}\n\n"
-    "### Input:\n{input}\n\n"
-    "### Response:\n"
-)
+INSTR_PROMPT = "### Instruction:\n{instruction}\n\n" "### Input:\n{input}\n\n" "### Response:\n"
+
 
 def format_example(ex: Dict[str, str]) -> Tuple[str, str]:
     """Return (prompt, target) using an Alpaca-like format."""
@@ -22,27 +19,59 @@ def format_example(ex: Dict[str, str]) -> Tuple[str, str]:
     prompt = INSTR_PROMPT.format(instruction=instruction, input=inp)
     return prompt, out
 
+
 def build_alpaca_like_examples() -> List[Dict[str, str]]:
     """Tiny, in-repo instruct set for CPU/MPS demos (no network)."""
     return [
-        {"instruction": "Summarize: The cat sat on the mat.",
-         "input": "", "output": "The cat sat on a mat."},
-        {"instruction": "Rewrite in a friendly tone", "input": "I cannot attend the meeting.",
-         "output": "Sorry, I won’t be able to make the meeting."},
+        {
+            "instruction": "Summarize: The cat sat on the mat.",
+            "input": "",
+            "output": "The cat sat on a mat.",
+        },
+        {
+            "instruction": "Rewrite in a friendly tone",
+            "input": "I cannot attend the meeting.",
+            "output": "Sorry, I won’t be able to make the meeting.",
+        },
         {"instruction": "Answer: What is 2+2?", "input": "", "output": "4"},
-        {"instruction": "Provide a short encouragement", "input": "", "output": "You’ve got this! Keep going."},
+        {
+            "instruction": "Provide a short encouragement",
+            "input": "",
+            "output": "You’ve got this! Keep going.",
+        },
         {"instruction": "Translate to French", "input": "Good morning", "output": "Bonjour"},
-        {"instruction": "Give a haiku about rain", "input": "", "output": "Soft rain taps the earth\nWindows hum with silver threads\nMorning wears a smile"},
-        {"instruction": "Turn into a bullet list", "input": "apples bananas carrots", "output": "- apples\n- bananas\n- carrots"},
-        {"instruction": "Polish the sentence", "input": "this code is bad", "output": "This code could use some improvements."},
-        {"instruction": "Define a variable in Python named x with value 3", "input": "", "output": "x = 3"},
-        {"instruction": "Respond kindly", "input": "I failed the test", "output": "I’m sorry you’re disappointed. One setback doesn’t define you; you can learn and improve."},
+        {
+            "instruction": "Give a haiku about rain",
+            "input": "",
+            "output": "Soft rain taps the earth\nWindows hum with silver threads\nMorning wears a smile",
+        },
+        {
+            "instruction": "Turn into a bullet list",
+            "input": "apples bananas carrots",
+            "output": "- apples\n- bananas\n- carrots",
+        },
+        {
+            "instruction": "Polish the sentence",
+            "input": "this code is bad",
+            "output": "This code could use some improvements.",
+        },
+        {
+            "instruction": "Define a variable in Python named x with value 3",
+            "input": "",
+            "output": "x = 3",
+        },
+        {
+            "instruction": "Respond kindly",
+            "input": "I failed the test",
+            "output": "I’m sorry you’re disappointed. One setback doesn’t define you; you can learn and improve.",
+        },
     ]
 
 
 # ---------------------------
 # Training (version-robust)
 # ---------------------------
+
 
 @dataclass
 class SFTConfig:
@@ -65,9 +94,7 @@ def run_lora_sft(cfg: SFTConfig) -> None:
     Requires: transformers, peft; optionally trl.
     """
     try:
-        from transformers import (
-            AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
-        )
+        from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
     except Exception as e:
         raise RuntimeError("Transformers required: pip install transformers") from e
 
@@ -82,6 +109,7 @@ def run_lora_sft(cfg: SFTConfig) -> None:
     if cfg.use_trl:
         try:
             from trl import SFTTrainer as _SFTTrainer
+
             SFTTrainer = _SFTTrainer
             has_trl = True
         except Exception:
@@ -100,9 +128,13 @@ def run_lora_sft(cfg: SFTConfig) -> None:
 
     # Apply LoRA (GPT-2 tiny: target c_attn & c_proj; fan_in_fan_out=True for Conv1D)
     lconf = LoraConfig(
-        r=cfg.lora_r, lora_alpha=cfg.lora_alpha, lora_dropout=cfg.lora_dropout,
+        r=cfg.lora_r,
+        lora_alpha=cfg.lora_alpha,
+        lora_dropout=cfg.lora_dropout,
         target_modules=["c_attn", "c_proj"],
-        bias="none", task_type="CAUSAL_LM", fan_in_fan_out=True
+        bias="none",
+        task_type="CAUSAL_LM",
+        fan_in_fan_out=True,
     )
     model = get_peft_model(model, lconf)
 
@@ -155,10 +187,14 @@ def run_lora_sft(cfg: SFTConfig) -> None:
 
     # ---------- Plain HF Trainer fallback (robust across environments) ----------
     enc = tok(texts, truncation=True, max_length=cfg.max_seq_len, padding=True, return_tensors=None)
-    train_dataset = [{"input_ids": ids, "attention_mask": am} for ids, am in zip(enc["input_ids"], enc["attention_mask"])]
+    train_dataset = [
+        {"input_ids": ids, "attention_mask": am}
+        for ids, am in zip(enc["input_ids"], enc["attention_mask"])
+    ]
 
     def collate(batch):
         import torch
+
         maxlen = max(len(b["input_ids"]) for b in batch)
         ids, attn = [], []
         for b in batch:
@@ -171,6 +207,8 @@ def run_lora_sft(cfg: SFTConfig) -> None:
             "labels": torch.tensor(ids, dtype=torch.long),
         }
 
-    trainer = Trainer(model=model, args=args, train_dataset=train_dataset, data_collator=collate, tokenizer=tok)
+    trainer = Trainer(
+        model=model, args=args, train_dataset=train_dataset, data_collator=collate, tokenizer=tok
+    )
     trainer.train()
     trainer.save_model(cfg.output_dir)

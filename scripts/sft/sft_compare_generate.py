@@ -1,10 +1,12 @@
 import typer
+
+from airoad.sft.infer import GenConfig, generate, load_base, load_with_lora, merge_and_save_lora
 from airoad.sft.lora_sft import build_alpaca_like_examples, format_example
-from airoad.sft.infer import load_base, load_with_lora, merge_and_save_lora, generate, GenConfig
 
 app = typer.Typer(add_completion=False)
 
 _PROMPTS = [format_example(ex)[0] for ex in build_alpaca_like_examples()][:5]  # first 5
+
 
 @app.command()
 def main(
@@ -32,12 +34,13 @@ def main(
         after_texts = generate(lora_model, tokL, _PROMPTS, cfg)
 
     for i, prompt in enumerate(_PROMPTS):
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print(f"PROMPT:\n{prompt.strip()}\n")
         print("BEFORE:")
         print(before_texts[i])
         print("\nAFTER:")
         print(after_texts[i])
+
 
 if __name__ == "__main__":
     app()

@@ -1,9 +1,13 @@
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
+
+import numpy as np
+
 
 def _add_bias(X: np.ndarray) -> np.ndarray:
     return np.c_[X, np.ones((X.shape[0], 1))]
+
 
 @dataclass
 class LinearRegressionGD:

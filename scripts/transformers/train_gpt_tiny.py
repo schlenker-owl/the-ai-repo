@@ -1,6 +1,11 @@
 # scripts/train_gpt_tiny.py
-import typer, pathlib, torch, torch.nn as nn
+import pathlib
+
+import torch
+import torch.nn as nn
+import typer
 from torch.utils.data import DataLoader
+
 from airoad.dl.char_data import CharDataset
 from airoad.transformers.gpt_tiny import GPTTiny
 from airoad.utils.device import pick_device
@@ -12,7 +17,7 @@ def _read_text(path: pathlib.Path) -> str:
     if path.exists():
         return path.read_text(encoding="utf-8")
     # tiny fallback text to keep the demo self-contained
-    return ("To be, or not to be, that is the question.\n" * 500)
+    return "To be, or not to be, that is the question.\n" * 500
 
 
 @app.command()

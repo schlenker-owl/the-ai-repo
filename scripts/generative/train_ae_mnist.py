@@ -1,10 +1,14 @@
-import typer, torch, torch.nn as nn
+import torch
+import torch.nn as nn
+import typer
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
+
 from airoad.generative.ae import ConvAE
 from airoad.utils.device import pick_device
 
 app = typer.Typer(add_completion=False)
+
 
 @app.command()
 def main(
@@ -30,7 +34,8 @@ def main(
         try:
             x, _ = next(it)
         except StopIteration:
-            it = iter(dl); x, _ = next(it)
+            it = iter(dl)
+            x, _ = next(it)
         x = x.to(dev)
         x_hat = model(x)
         loss = loss_fn(x_hat, x)
@@ -41,6 +46,7 @@ def main(
 
         if step % 50 == 0:
             typer.echo(f"step {step:04d}  recon_mse={loss.item():.5f}")
+
 
 if __name__ == "__main__":
     app()

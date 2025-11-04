@@ -1,9 +1,9 @@
 # Char RNN / LSTM / GRU — Sequence Modeling (v0.2)
 
-**Paths**  
-- Data & Vocab: `src/airoad/dl/char_data.py`  
-- Models: `src/airoad/dl/char_rnn.py`  
-- Script: `scripts/train_char_rnn.py`  
+**Paths**
+- Data & Vocab: `src/airoad/dl/char_data.py`
+- Models: `src/airoad/dl/char_rnn.py`
+- Script: `scripts/train_char_rnn.py`
 - Tests: `tests/test_char_models.py`
 
 ---
@@ -77,4 +77,3 @@ uv run python scripts/train_char_rnn.py --model lstm --steps 300 --block-size 12
 * `docs/TRANSFORMER_GPT_TINY.md` — causal self-attention (Tiny GPT)
 * `docs/NN_README.md` — overview of neural labs (MLP/CNN/Seq2Seq/GPT)
 * `docs/GENERATIVE.md` — AE · VAE · DDPM-Mini
-

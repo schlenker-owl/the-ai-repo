@@ -1,12 +1,15 @@
 from __future__ import annotations
+
 import torch.nn as nn
 from torchvision import models
+
 
 class ResNet18Transfer(nn.Module):
     """
     Minimal transfer learner: resnet18 backbone (weights=None by default),
     replace fc to num_classes.
     """
+
     def __init__(self, num_classes: int = 10, weights=None, freeze_backbone: bool = True):
         super().__init__()
         m = models.resnet18(weights=weights)

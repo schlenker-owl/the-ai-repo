@@ -1,10 +1,13 @@
-import typer, torch
+import torch
+import typer
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
+
 from airoad.generative.vae import ConvVAE, VaeLossConfig, elbo_loss
 from airoad.utils.device import pick_device
 
 app = typer.Typer(add_completion=False)
+
 
 @app.command()
 def main(
@@ -31,7 +34,8 @@ def main(
         try:
             x, _ = next(it)
         except StopIteration:
-            it = iter(dl); x, _ = next(it)
+            it = iter(dl)
+            x, _ = next(it)
         x = x.to(dev)
 
         x_hat, mu, logvar = vae(x)
@@ -45,7 +49,10 @@ def main(
             bce = float(parts["bce"])
             kl = float(parts["kl"])
             beta = float(parts["beta"])
-            typer.echo(f"step {step:04d}  elbo={loss.item():.5f}  bce={bce:.5f}  kl={kl:.5f}  beta={beta:.3f}")
+            typer.echo(
+                f"step {step:04d}  elbo={loss.item():.5f}  bce={bce:.5f}  kl={kl:.5f}  beta={beta:.3f}"
+            )
+
 
 if __name__ == "__main__":
     app()

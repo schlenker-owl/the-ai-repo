@@ -1,0 +1,59 @@
+minimum_pre_commit_version: "3.7.0"
+default_language_version:
+  python: python3
+ci:
+  autofix_prs: true
+  autoupdate_schedule: monthly
+
+exclude: |
+  (?x)(
+    ^data/|
+    ^outputs/|
+    ^.venv/|
+    ^dist/|
+    ^build/
+  )
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: detect-private-key
+
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        args: [--line-length=100]
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile=black", "--line-length=100"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]  # auto-fix what it can
+        additional_dependencies: []
+      # If you prefer ruff-format instead of black, you could add it here
+      # - id: ruff-format
+
+  # Optional: run Black/Ruff on notebooks if/when notebooks are added
+  - repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.9.0
+    hooks:
+      - id: nbqa-black
+        additional_dependencies: [black==24.8.0]
+        args: [--line-length=100]
+      - id: nbqa-ruff
+        additional_dependencies: [ruff==0.6.9]
+        args: [--fix]

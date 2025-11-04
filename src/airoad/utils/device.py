@@ -1,5 +1,6 @@
 import torch
 
+
 def pick_device() -> torch.device:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")

@@ -1,23 +1,27 @@
 # src/airoad/tokenizers/bpe.py
 from __future__ import annotations
+
 import json
+from collections import Counter
 from dataclasses import dataclass
-from collections import Counter, defaultdict
 from typing import List, Tuple
 
-_EOW = "</w>"    # end-of-word marker for training
+_EOW = "</w>"  # end-of-word marker for training
 _UNK = "<unk>"
+
 
 def _word_to_symbols(word: str) -> Tuple[str, ...]:
     # split into unicode chars and append EOW
     return tuple(list(word)) + (_EOW,)
 
+
 def _get_stats(corpus: List[Tuple[str, ...]]) -> Counter:
     stats = Counter()
     for symbols in corpus:
         for i in range(len(symbols) - 1):
-            stats[(symbols[i], symbols[i+1])] += 1
+            stats[(symbols[i], symbols[i + 1])] += 1
     return stats
+
 
 def _merge_corpus(corpus: List[Tuple[str, ...]], pair: Tuple[str, str]) -> List[Tuple[str, ...]]:
     a, b = pair
@@ -27,7 +31,7 @@ def _merge_corpus(corpus: List[Tuple[str, ...]], pair: Tuple[str, str]) -> List[
         out: List[str] = []
         i = 0
         while i < len(symbols):
-            if i < len(symbols) - 1 and symbols[i] == a and symbols[i+1] == b:
+            if i < len(symbols) - 1 and symbols[i] == a and symbols[i + 1] == b:
                 out.append(bigram)
                 i += 2
             else:
@@ -35,6 +39,7 @@ def _merge_corpus(corpus: List[Tuple[str, ...]], pair: Tuple[str, str]) -> List[
                 i += 1
         merged.append(tuple(out))
     return merged
+
 
 @dataclass
 class BPETokenizer:
@@ -92,11 +97,12 @@ class BPETokenizer:
             i = 0
             out: List[str] = []
             while i < len(symbols):
-                if i < len(symbols) - 1 and symbols[i] == a and symbols[i+1] == b:
+                if i < len(symbols) - 1 and symbols[i] == a and symbols[i + 1] == b:
                     out.append(a + b)
                     i += 2
                 else:
-                    out.append(symbols[i]); i += 1
+                    out.append(symbols[i])
+                    i += 1
             symbols = out
         return symbols
 

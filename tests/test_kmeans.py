@@ -1,5 +1,7 @@
 import numpy as np
+
 from airoad.unsupervised.kmeans import KMeans
+
 
 def make_blobs(n=300, k=3, d=2, sep=5.0, seed=1):
     rng = np.random.default_rng(seed)
@@ -11,6 +13,7 @@ def make_blobs(n=300, k=3, d=2, sep=5.0, seed=1):
         ys.append(np.full(n_per, j))
     return np.vstack(Xs), np.hstack(ys)
 
+
 def purity(y_true, y_pred):
     acc = 0
     for c in np.unique(y_pred):
@@ -19,6 +22,7 @@ def purity(y_true, y_pred):
             vals, counts = np.unique(y_true[mask], return_counts=True)
             acc += counts.max()
     return float(acc / len(y_true))
+
 
 def test_kmeans_purity_on_blobs():
     X, y = make_blobs(n=300, k=3, d=2, sep=6.0, seed=3)

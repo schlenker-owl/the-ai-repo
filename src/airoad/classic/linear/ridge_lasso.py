@@ -1,7 +1,7 @@
 # src/airoad/models/ridge_lasso.py
 from __future__ import annotations
+
 import numpy as np
-from dataclasses import dataclass
 
 
 def _add_bias(X: np.ndarray) -> np.ndarray:
@@ -23,12 +23,12 @@ def ridge_closed_form(
     n, _ = X.shape
 
     Xext = _add_bias(X) if fit_intercept else X
-    A = (Xext.T @ Xext) / n                           # (d(+1), d(+1))
-    b = (Xext.T @ y) / n                              # (d(+1), 1)
-    I = np.eye(A.shape[0])
+    A = (Xext.T @ Xext) / n  # (d(+1), d(+1))
+    b = (Xext.T @ y) / n  # (d(+1), 1)
+    identity_mat = np.eye(A.shape[0])
     if fit_intercept:
-        I[-1, -1] = 0.0                               # do not penalize bias
-    w_ext = np.linalg.solve(A + lam * I, b)           # (d(+1), 1)
+        identity_mat[-1, -1] = 0.0  # do not penalize bias
+    w_ext = np.linalg.solve(A + lam * identity_mat, b)
 
     if fit_intercept:
         w = w_ext[:-1, 0]
@@ -104,12 +104,12 @@ def lasso_coordinate_descent(
     y = np.asarray(y, dtype=np.float64).reshape(-1, 1)
     n, _ = X.shape
 
-    Xext = _add_bias(X) if fit_intercept else X            # (n, d(+1))
+    Xext = _add_bias(X) if fit_intercept else X  # (n, d(+1))
     m = Xext.shape[1]
     W = np.zeros((m, 1), dtype=np.float64)
 
     # Precompute column squared norms
-    col_norm2 = (Xext ** 2).sum(axis=0, keepdims=True)     # (1, m)
+    col_norm2 = (Xext**2).sum(axis=0, keepdims=True)  # (1, m)
 
     for _ in range(max_iter):
         W_prev = W.copy()

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-lint:
+    name: Python ${{ matrix.python-version }} • ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.11"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Sync environment (project + dev tools)
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          source .venv/bin/activate
+          # Install project (default deps) + dev group (pre-commit, black, ruff, isort, nbqa, pytest)
+          uv sync -g dev
+
+      - name: Pre-commit (lint & format)
+        run: |
+          source .venv/bin/activate
+          uv run pre-commit run -a
+
+      - name: Run tests
+        run: |
+          source .venv/bin/activate
+          uv run pytest -q

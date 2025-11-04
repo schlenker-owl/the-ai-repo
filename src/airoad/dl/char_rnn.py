@@ -1,13 +1,22 @@
 # src/airoad/dl/char_rnn.py
 from __future__ import annotations
-import torch
+
 import torch.nn as nn
+
 
 class CharRNN(nn.Module):
     """
     Embedding -> {RNN/LSTM/GRU} -> Linear logits
     """
-    def __init__(self, vocab_size: int, emb_dim: int = 64, hidden: int = 128, num_layers: int = 1, kind: str = "lstm"):
+
+    def __init__(
+        self,
+        vocab_size: int,
+        emb_dim: int = 64,
+        hidden: int = 128,
+        num_layers: int = 1,
+        kind: str = "lstm",
+    ):
         super().__init__()
         self.embed = nn.Embedding(vocab_size, emb_dim)
         if kind == "rnn":
@@ -24,7 +33,7 @@ class CharRNN(nn.Module):
         x: (B, T) token ids
         returns logits: (B, T, vocab)
         """
-        emb = self.embed(x)             # (B,T,E)
-        out, _ = self.core(emb)         # (B,T,H)
-        logits = self.proj(out)         # (B,T,V)
+        emb = self.embed(x)  # (B,T,E)
+        out, _ = self.core(emb)  # (B,T,H)
+        logits = self.proj(out)  # (B,T,V)
         return logits

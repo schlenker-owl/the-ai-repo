@@ -1,14 +1,17 @@
 from __future__ import annotations
-import numpy as np
+
 from dataclasses import dataclass
+
+import numpy as np
+
 
 @dataclass
 class PCA:
     n_components: int  # number of principal components to keep
-    mean_: np.ndarray | None = None          # (d,)
-    components_: np.ndarray | None = None    # (k, d)
-    explained_variance_: np.ndarray | None = None         # (k,)
-    explained_variance_ratio_: np.ndarray | None = None   # (k,)
+    mean_: np.ndarray | None = None  # (d,)
+    components_: np.ndarray | None = None  # (k, d)
+    explained_variance_: np.ndarray | None = None  # (k,)
+    explained_variance_ratio_: np.ndarray | None = None  # (k,)
 
     def fit(self, X: np.ndarray):
         X = np.asarray(X, dtype=np.float64)
@@ -23,7 +26,7 @@ class PCA:
         var = (S * S) / max(n - 1, 1)
         total = var.sum()
         k = self.n_components
-        self.components_ = Vt[:k, :]                 # (k, d)
+        self.components_ = Vt[:k, :]  # (k, d)
         self.explained_variance_ = var[:k]
         self.explained_variance_ratio_ = var[:k] / (total + 1e-12)
         return self

@@ -1,10 +1,13 @@
-import typer
 from typing import List, Tuple
-from airoad.sft.lora_sft import build_alpaca_like_examples, format_example
-from airoad.sft.infer import load_base, load_with_lora, merge_and_save_lora, generate, GenConfig
+
+import typer
+
 from airoad.sft.eval_sft import evaluate_pairs
+from airoad.sft.infer import GenConfig, generate, load_base, load_with_lora, merge_and_save_lora
+from airoad.sft.lora_sft import build_alpaca_like_examples, format_example
 
 app = typer.Typer(add_completion=False)
+
 
 @app.command()
 def main(
@@ -40,13 +43,14 @@ def main(
 
     # evaluate
     pairs_before: List[Tuple[str, str]] = list(zip(before, refs))
-    pairs_after: List[Tuple[str, str]]  = list(zip(after, refs))
+    pairs_after: List[Tuple[str, str]] = list(zip(after, refs))
     m_before = evaluate_pairs(pairs_before)
-    m_after  = evaluate_pairs(pairs_after)
+    m_after = evaluate_pairs(pairs_after)
 
     print("=== SFT toy metrics ===")
     print("Before:", m_before)
     print("After: ", m_after)
+
 
 if __name__ == "__main__":
     app()
