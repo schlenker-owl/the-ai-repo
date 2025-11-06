@@ -1,0 +1,21 @@
+# Either set 'data.yaml' directly...
+data:
+  # yaml: "datasets/autolabel/my_seg_ds/data.yaml"
+
+  # ...or point at the dataset root that contains data.yaml:
+  root: "datasets/autolabel/my_seg_ds"
+
+# Training args
+train:
+  model: "yolo11s-seg.pt"  # swap to det model for detection datasets
+  imgsz: 640
+  epochs: 50
+  batch: 16
+  device: "mps"            # "0" for first CUDA GPU, or "mps" on Apple Silicon
+  seed: 42
+  lr0: 0.01
+  optimizer: "auto"
+  patience: 50
+  project: "runs/train"
+  name: "exp"
+  exist_ok: true
