@@ -1,0 +1,49 @@
+# EITHER provide a single file (as you have), OR a folder:
+source: "data/videos/ai_video_5.mp4"
+
+# Batch mode:
+# source_dir: "data/videos"     # <— directory to scan
+# source_glob: ["*.mp4","*.mov","*.mkv","*.avi","*.m4v","*.webm"]  # optional; can be a single pattern string
+recursive: false              # set true to scan subfolders
+output_root: "outputs/cv"     # parent folder; per-file subdirs are created under here
+
+# Model & tracking
+model: "yolo11n.pt"
+tracker: "botsort.yaml"
+
+# Inference
+conf: 0.3
+iou: 0.5
+imgsz: 640
+classes: null
+device: null
+frame_stride: 1
+
+# Display/drawing
+draw_labels: true
+draw_masks: true
+draw_tracks: true
+show: false
+save_video: true
+
+# Analytics (same as before)
+lines:
+  - name: entry_line
+    p1: [100, 200]
+    p2: [540, 200]
+    classes: [0]
+
+zones:
+  - name: roi_zone
+    points: [[50,50],[600,50],[600,400],[50,400]]
+    classes: [0]
+
+meter_per_pixel: null
+max_speed_kmh: 200.0
+speed_ema_alpha: 0.3
+track_lost_patience: 30
+
+# Logging
+log_level: "INFO"
+log_every_n_frames: 100
+log_file: "outputs/cv/analysis.log"  # only used in single-file mode; batch mode writes per-file logs automatically

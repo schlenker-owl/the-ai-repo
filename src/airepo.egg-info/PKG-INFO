@@ -5,7 +5,9 @@ Summary: Add your description here
 Author-email: Aaron Schlenker <aschlenk3@gmail.com>
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: accelerate>=1.11.0
+Requires-Dist: cv>=1.0.0
 Requires-Dist: datasets>=2.19.0
 Requires-Dist: evaluate>=0.4.6
 Requires-Dist: fastapi>=0.121.0
@@ -19,6 +21,7 @@ Requires-Dist: torchaudio>=2.9.0
 Requires-Dist: torchvision>=0.24.0
 Requires-Dist: transformers>=4.57.1
 Requires-Dist: typer>=0.20.0
+Requires-Dist: ultralytics>=8.3.225
 Requires-Dist: uvicorn>=0.38.0
 Provides-Extra: rag
 Requires-Dist: faiss-cpu>=1.8.0; extra == "rag"
@@ -27,6 +30,7 @@ Provides-Extra: llm
 Requires-Dist: peft>=0.17.1; extra == "llm"
 Requires-Dist: trl>=0.24.0; extra == "llm"
 Requires-Dist: wandb>=0.22.3; extra == "llm"
+Dynamic: license-file
 
 # the-ai-repo (package: `airoad`) — Hands-On AI/ML/LLMs Roadmap
 
