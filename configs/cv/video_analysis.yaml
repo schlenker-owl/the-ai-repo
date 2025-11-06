@@ -1,12 +1,12 @@
 # EITHER provide a single file (as you have), OR a folder:
 # source: "data/videos/ai_video_5.mp4"
 # source: "data/videos/ai_video_9.mp4"
-source: "data/videos/messi_highlights.mp4"
+# source: "data/videos/messi_highlights.mp4"
 # source: "data/videos/aivideo_12.mp4"
 
 # Batch mode:
-# source_dir: "data/videos"     # <— directory to scan
-# source_glob: ["*.mp4","*.mov","*.mkv","*.avi","*.m4v","*.webm"]  # optional; can be a single pattern string
+source_dir: "data/videos"     # <— directory to scan
+source_glob: ["*.mp4","*.mov","*.mkv","*.avi","*.m4v","*.webm"]  # optional; can be a single pattern string
 recursive: false              # set true to scan subfolders
 output_root: "outputs/cv"     # parent folder; per-file subdirs are created under here
 

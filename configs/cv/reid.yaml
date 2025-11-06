@@ -1,0 +1,18 @@
+backbone:
+  name: "auto"         # "auto" | "open-clip:ViT-B-32" | "resnet50"
+  device: null         # "cpu" | "mps" | "0" | "cuda"
+  dtype: "float32"     # "float32" | "float16" (not recommended on CPU)
+  image_size: 224
+
+embed:
+  batch_size: 64
+  frame_stride: 5
+  per_track_max_samples: 12
+  min_box_size: 16
+  class_filter: null    # e.g., [0] to process persons only
+
+associate:
+  min_sim: 0.45
+  same_class_only: true
+  max_same_video_time_overlap: 0
+  allow_merge_same_video: false
