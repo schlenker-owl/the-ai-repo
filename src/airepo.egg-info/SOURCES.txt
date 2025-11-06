@@ -37,6 +37,8 @@ src/airoad/reid/matcher.py
 src/airoad/rl/gridworld.py
 src/airoad/rl/q_learning.py
 src/airoad/rl/value_iteration.py
+src/airoad/search/backbone.py
+src/airoad/search/indexer.py
 src/airoad/seq2seq/attn_seq2seq.py
 src/airoad/sft/eval_sft.py
 src/airoad/sft/infer.py

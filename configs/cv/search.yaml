@@ -1,0 +1,35 @@
+backbone:
+  # Use OpenCLIP for text↔image; fallback to resnet50 (image↔image only) if not installed.
+  name: "open-clip:ViT-B-32"   # "auto" | "open-clip:ViT-B-32" | "resnet50"
+  device: null                 # "mps" | "0" | "cpu"
+  dtype: "float32"
+  image_size: 224
+
+embed:
+  batch_size: 128
+
+index:
+  type: "auto"     # "auto" (FAISS if available) | "faiss_flat" | "ivfpq" | "numpy"
+  nlist: 1024
+  m: 64
+  nprobe: 16
+
+inputs:
+  roots:
+    - "outputs/cv_images"
+  # We’ll try these in order; any that exist will be indexed.
+  patterns:
+    # crops (preferred if you saved them)
+    - "**/crops/*/*.jpg"
+    - "**/crops/*/*.jpeg"
+    - "**/crops/*/*.png"
+    - "**/crops/*/*.webp"
+
+    # masks inside each per-image folder
+    - "**/masks/*.png"
+
+    # annotated images saved by image_analysis.py
+    - "**/*_det.png"
+    - "**/*_seg.png"
+    - "**/*_pose.png"
+    - "**/*_cls.png"
