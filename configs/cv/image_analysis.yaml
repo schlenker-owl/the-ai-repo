@@ -1,0 +1,28 @@
+# EITHER provide a single image OR a folder of images
+
+# Single image:
+# source: "data/images/football.jpg"
+# out_dir: "outputs/cv_images/example"
+
+# Folder mode:
+source_dir: "data/images"
+source_glob: ["*.jpg","*.jpeg","*.png","*.bmp","*.tif","*.tiff","*.webp"]
+recursive: false
+output_root: "outputs/cv_images"
+
+# Model / inference
+model: "yolo11n.pt"        # try yolo11s.pt for better accuracy
+conf: 0.3
+iou: 0.5
+imgsz: 640
+classes: null              # e.g., [0,2,3,5,7] to restrict classes
+device: null               # "cpu", "mps", "0", ...
+
+# Saving / drawing
+save_annotated: true
+draw_labels: true
+draw_conf: true
+save_json: true
+save_crops: false
+save_masks: false          # set true if using *-seg.pt model
+crop_max_size: 1024        # optional, resize large crops down (pixels)
