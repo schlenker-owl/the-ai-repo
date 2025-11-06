@@ -1,5 +1,8 @@
 # EITHER provide a single file (as you have), OR a folder:
-source: "data/videos/ai_video_5.mp4"
+# source: "data/videos/ai_video_5.mp4"
+# source: "data/videos/ai_video_9.mp4"
+source: "data/videos/messi_highlights.mp4"
+# source: "data/videos/aivideo_12.mp4"
 
 # Batch mode:
 # source_dir: "data/videos"     # <— directory to scan
@@ -25,6 +28,13 @@ draw_masks: true
 draw_tracks: true
 show: false
 save_video: true
+
+# NEW (explicitly keep the video clean)
+draw_hud: false      # no big stats panel
+draw_lines: false    # don't draw line geometry
+label_lines: false   # don't print "entry_line: ..."
+draw_zones: false    # don't draw zone polygons
+label_zones: false   # don't print zone labels
 
 # Analytics (same as before)
 lines:

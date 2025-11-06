@@ -62,6 +62,13 @@ class AnalyzerConfig:
     show: bool = False
     save_video: bool = True
 
+    # NEW: fine-grained overlay toggles (all optional)
+    draw_hud: bool = False  # big black stats panel (disabled for clean video)
+    draw_lines: bool = False  # draw line geometry
+    label_lines: bool = False  # write "entry_line ..." labels
+    draw_zones: bool = False  # draw zone polygons
+    label_zones: bool = False  # write zone count labels
+
     # Analytics
     lines: List[LineSpec] = field(default_factory=list)
     zones: List[ZoneSpec] = field(default_factory=list)
@@ -108,19 +115,7 @@ def _side_of_line(p: Point, a: Point, b: Point) -> float:
 
 class VideoAnalyzer:
     """
-    High-level video analytics on Ultralytics YOLO tracking:
-
-    - detection/segmentation/pose via model file
-    - multi-object tracking with BoT-SORT/ByteTrack
-    - unique count per class
-    - zone enter/exit & dwell, line-crossing with direction (A->B, B->A)
-    - speed (km/h) + EMA smoothing
-    - annotated output video + CSVs + JSON summary
-    - detailed logging and periodic progress logs
-
-    Notes:
-      - Uses model.track(..., stream=True) generator. Boxes.id provides track IDs.
-      - Direction for a line (p1->p2): sign flip from negative -> positive => "A->B", positive -> negative => "B->A".
+    High-level video analytics on Ultralytics YOLO tracking.
     """
 
     def __init__(self, cfg: AnalyzerConfig):
@@ -149,9 +144,7 @@ class VideoAnalyzer:
         )  # id -> {cx,cy, speed_kmh, speed_kmh_ema, last_seen_frame, last_side_<line>}
         self.unique_ids_by_class: Dict[int, set] = {}
         self.zone_counts: Dict[str, int] = {}
-        self.zone_seen_once: Dict[str, set] = (
-            {}
-        )  # legacy "count once" behavior (kept for reference)
+        self.zone_seen_once: Dict[str, set] = {}  # legacy "count once" behavior
         self.zone_state: Dict[str, Dict[int, Dict[str, int]]] = (
             {}
         )  # zone -> track_id -> {"inside":0/1, "enter_frame":int}
@@ -393,55 +386,49 @@ class VideoAnalyzer:
                 self.log.debug(f"ZoneExitLost {z.name} tid={tid} dwell={dwell_s:.2f}s")
 
     def _draw_overlays(self, frame: np.ndarray):
-        # draw lines
-        for ln in self.cfg.lines:
-            cv2.line(frame, ln.p1, ln.p2, (0, 255, 255), 2)
-            lbl = f"{ln.name}: {self.line_counts[ln.name]} (A->B {self.line_counts_dir[ln.name]['A->B']}, B->A {self.line_counts_dir[ln.name]['B->A']})"
-            cv2.putText(
-                frame,
-                lbl,
-                (ln.p1[0], max(15, ln.p1[1] - 8)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
-                (0, 255, 255),
-                2,
-            )
+        # Lines
+        if self.cfg.draw_lines:
+            for ln in self.cfg.lines:
+                cv2.line(frame, ln.p1, ln.p2, (0, 255, 255), 2)
+                if self.cfg.label_lines:
+                    lbl = f"{ln.name}: {self.line_counts[ln.name]} (A->B {self.line_counts_dir[ln.name]['A->B']}, B->A {self.line_counts_dir[ln.name]['B->A']})"
+                    cv2.putText(
+                        frame,
+                        lbl,
+                        (ln.p1[0], max(15, ln.p1[1] - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.55,
+                        (0, 255, 255),
+                        2,
+                    )
 
-        # draw zones
-        for z in self.cfg.zones:
-            pts = np.array(z.points, dtype=np.int32)
-            cv2.polylines(frame, [pts], isClosed=True, color=(255, 140, 0), thickness=2)
-            cX = int(np.mean(pts[:, 0]))
-            cY = int(np.mean(pts[:, 1]))
-            cv2.putText(
-                frame,
-                f"{z.name}:{self.zone_counts[z.name]}",
-                (cX, cY),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (255, 140, 0),
-                2,
-            )
+        # Zones
+        if self.cfg.draw_zones:
+            for z in self.cfg.zones:
+                pts = np.array(z.points, dtype=np.int32)
+                cv2.polylines(frame, [pts], isClosed=True, color=(255, 140, 0), thickness=2)
+                if self.cfg.label_zones:
+                    cX = int(np.mean(pts[:, 0]))
+                    cY = int(np.mean(pts[:, 1]))
+                    cv2.putText(
+                        frame,
+                        f"{z.name}:{self.zone_counts[z.name]}",
+                        (cX, cY),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (255, 140, 0),
+                        2,
+                    )
 
-        # HUD counts per class
-        y = 28
-        cv2.rectangle(
-            frame, (5, 5), (420, 5 + 22 * (len(self.unique_ids_by_class) + 3)), (0, 0, 0), -1
-        )
-        cv2.putText(
-            frame,
-            f"FPS:{self.fps:.1f}  frame:{self.frame_idx}",
-            (10, y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (255, 255, 255),
-            1,
-        )
-        y += 20
-        for cid in sorted(self.unique_ids_by_class):
+        # HUD (disabled by default)
+        if self.cfg.draw_hud:
+            y = 28
+            cv2.rectangle(
+                frame, (5, 5), (420, 5 + 22 * (len(self.unique_ids_by_class) + 3)), (0, 0, 0), -1
+            )
             cv2.putText(
                 frame,
-                f"class[{cid}] unique:{len(self.unique_ids_by_class[cid])}",
+                f"FPS:{self.fps:.1f}  frame:{self.frame_idx}",
                 (10, y),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.55,
@@ -449,6 +436,17 @@ class VideoAnalyzer:
                 1,
             )
             y += 20
+            for cid in sorted(self.unique_ids_by_class):
+                cv2.putText(
+                    frame,
+                    f"class[{cid}] unique:{len(self.unique_ids_by_class[cid])}",
+                    (10, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (255, 255, 255),
+                    1,
+                )
+                y += 20
 
     # --------------- Main ---------------
 
@@ -458,7 +456,6 @@ class VideoAnalyzer:
         self._init_writer()
 
         # Tracking stream
-        # passes vid_stride (frame skipping) and class filter; stream yields Results per processed frame
         self.log.info("Starting tracking stream...")
         results_gen = self.model.track(
             source=self.cfg.source,
@@ -482,13 +479,10 @@ class VideoAnalyzer:
             names_map = r.names if hasattr(r, "names") else {}
             need_vis = self.needs_vis
 
-            # Only call r.plot() if we actually need visualization
             annotated = r.plot() if need_vis else frame
 
-            # parse detections
             boxes = r.boxes
             if boxes is None or len(boxes) == 0:
-                # even if no detections, still overlay HUD and write frame
                 if need_vis:
                     self._draw_overlays(annotated)
                     if self.writer:
@@ -534,7 +528,7 @@ class VideoAnalyzer:
                     prev_pt = (int(self.track_state[tid]["cx"]), int(self.track_state[tid]["cy"]))
                 inst_spd, ema_spd = self._update_speed(tid, cx, cy) if tid >= 0 else (None, None)
 
-                # remember current center
+                # remember current position
                 if tid >= 0:
                     self.track_state[tid]["cx"] = cx
                     self.track_state[tid]["cy"] = cy
@@ -585,7 +579,7 @@ class VideoAnalyzer:
             # close open dwell for lost tracks
             self._flush_lost_tracks(alive_ids, names_map)
 
-            # overlays (zones/lines/hud)
+            # overlays (lines/zones/hud as requested)
             if need_vis:
                 self._draw_overlays(annotated)
 
@@ -621,7 +615,6 @@ class VideoAnalyzer:
         # dwell aggregates per zone
         dwell_stats: Dict[str, Dict[str, float]] = {}
         for z in self.cfg.zones:
-            # collect dwell_s from events rows
             dwell = [
                 float(e.get("zone_dwell_s", 0.0))
                 for e in self.events_rows

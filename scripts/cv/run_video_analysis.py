@@ -34,8 +34,7 @@ def _build_base_cfg(d: Dict[str, Any]) -> AnalyzerConfig:
     lines = [LineSpec(**ln) for ln in d.get("lines", [])]
     zones = [ZoneSpec(**z) for z in d.get("zones", [])]
 
-    # allow source to be omitted when using source_dir
-    source_val = d.get("source", "")  # will be replaced per-file if blank
+    source_val = d.get("source", "")  # replaced per-file if blank
 
     return AnalyzerConfig(
         source=source_val,
@@ -57,6 +56,12 @@ def _build_base_cfg(d: Dict[str, Any]) -> AnalyzerConfig:
         draw_tracks=bool(d.get("draw_tracks", True)),
         show=bool(d.get("show", False)),
         save_video=bool(d.get("save_video", True)),
+        # NEW overlay toggles (default clean video)
+        draw_hud=bool(d.get("draw_hud", False)),
+        draw_lines=bool(d.get("draw_lines", False)),
+        label_lines=bool(d.get("label_lines", False)),
+        draw_zones=bool(d.get("draw_zones", False)),
+        label_zones=bool(d.get("label_zones", False)),
         lines=lines,
         zones=zones,
         meter_per_pixel=d.get("meter_per_pixel"),
@@ -69,10 +74,7 @@ def _build_base_cfg(d: Dict[str, Any]) -> AnalyzerConfig:
 
 
 def _cfg_for_file(base: AnalyzerConfig, src_path: Path, out_root: Path) -> AnalyzerConfig:
-    """
-    Clone the base config for a single video file and wire per-file output paths.
-    Outputs live under: {out_root}/{video-stem}/...
-    """
+    """Clone base config for a single video and wire per-file outputs."""
     stem = src_path.stem
     out_dir = out_root / stem
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -97,6 +99,12 @@ def _cfg_for_file(base: AnalyzerConfig, src_path: Path, out_root: Path) -> Analy
         draw_tracks=base.draw_tracks,
         show=base.show,
         save_video=base.save_video,
+        # carry overlay toggles
+        draw_hud=base.draw_hud,
+        draw_lines=base.draw_lines,
+        label_lines=base.label_lines,
+        draw_zones=base.draw_zones,
+        label_zones=base.label_zones,
         lines=base.lines,
         zones=base.zones,
         meter_per_pixel=base.meter_per_pixel,
@@ -118,11 +126,7 @@ _DEFAULT_PATTERNS = ["*.mp4", "*.mov", "*.mkv", "*.avi", "*.m4v", "*.webm"]
 def _iter_videos(source_dir: Path, patterns: Iterable[str], recursive: bool) -> List[Path]:
     vids: List[Path] = []
     for pat in patterns:
-        if recursive:
-            vids.extend(source_dir.rglob(pat))
-        else:
-            vids.extend(source_dir.glob(pat))
-    # dedupe and sort by name for stable order
+        vids.extend(source_dir.rglob(pat) if recursive else source_dir.glob(pat))
     uniq = sorted(set([p for p in vids if p.is_file()]))
     return uniq
 
@@ -140,8 +144,8 @@ def main():
     cfg_dict = _load_yaml_cfg(args.config)
     base_cfg = _build_base_cfg(cfg_dict)
 
-    # Batch mode knobs (all optional)
-    source_dir = cfg_dict.get("source_dir")  # e.g., "data/videos"
+    # optional batch knobs
+    source_dir = cfg_dict.get("source_dir")
     output_root = Path(cfg_dict.get("output_root", "outputs/cv")).resolve()
     patterns = cfg_dict.get("source_glob", _DEFAULT_PATTERNS)
     if isinstance(patterns, str):
@@ -149,7 +153,7 @@ def main():
     recursive = bool(cfg_dict.get("recursive", False))
 
     if source_dir:
-        # -------- Directory (batch) mode --------
+        # Directory (batch) mode
         src_dir = Path(source_dir).expanduser().resolve()
         if not src_dir.exists():
             raise FileNotFoundError(f"source_dir not found: {src_dir}")
@@ -184,22 +188,19 @@ def main():
                     }
                 )
             except Exception as e:
-                # Keep going if one file fails
                 print(f"[video_analysis] ERROR on {vp}: {e}")
 
-        # Write batch summary
         batch_summary_path = output_root / "_batch_summary.json"
         with open(batch_summary_path, "w") as f:
             json.dump(batch_summaries, f, indent=2)
         print(f"[video_analysis] Batch complete. Wrote {batch_summary_path}")
 
     else:
-        # -------- Single-file mode --------
+        # Single-file mode
         if not base_cfg.source:
             raise ValueError(
                 "YAML must include either 'source' (file/stream) or 'source_dir' (folder)."
             )
-        # ensure output dir for single mode (Analyzer also ensures its own)
         os.makedirs(os.path.dirname(base_cfg.out_video) or ".", exist_ok=True)
         analyzer = VideoAnalyzer(base_cfg)
         summary = analyzer.run()
