@@ -15,6 +15,10 @@ src/airoad/classic/linear/logreg_numpy.py
 src/airoad/classic/linear/ridge_lasso.py
 src/airoad/classic/neighbors/knn.py
 src/airoad/classic/tree/tree_gini.py
+src/airoad/cv/video_analysis.py
+src/airoad/cv/graphics/heatmaps.py
+src/airoad/cv/graphics/plots.py
+src/airoad/cv/graphics/report_builder.py
 src/airoad/datasets/toy.py
 src/airoad/dl/char_data.py
 src/airoad/dl/char_rnn.py
