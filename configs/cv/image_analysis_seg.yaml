@@ -1,0 +1,31 @@
+# Single image:
+# source: "data/images/example.jpg"
+# out_dir: "outputs/cv_images/example"
+
+# Folder mode:
+source_dir: "data/images"
+source_glob: ["*.jpg","*.jpeg","*.png","*.bmp","*.tif","*.tiff","*.webp"]
+recursive: false
+output_root: "outputs/cv_images"
+
+# Model / inference
+model: "yolo11n-seg.pt"     # segmentation; try yolo11s-seg.pt for better masks
+conf: 0.3
+iou: 0.5
+imgsz: 640
+classes: null
+device: null
+
+# Rendering / saving
+save_annotated: true
+render_style: "auto"         # "auto" uses masks if present; or set "masks_only"
+mask_alpha: 0.45
+draw_labels: true
+draw_conf: true
+save_json: true
+save_crops: false
+save_masks: true             # save per-instance mask PNGs
+crop_max_size: 1024
+
+# Classification (ignored unless cls model)
+topk: 5

@@ -34,7 +34,6 @@ def main():
 
     cfg = _load_yaml_cfg(args.config)
 
-    # Base config (defaults)
     base = ImageAnalyzerConfig(
         source=str(cfg.get("source", "")),
         model=str(cfg.get("model", "yolo11n.pt")),
@@ -45,15 +44,17 @@ def main():
         device=cfg.get("device"),
         out_dir=str(cfg.get("out_dir", "outputs/cv_images/sample")),
         save_annotated=bool(cfg.get("save_annotated", True)),
+        render_style=str(cfg.get("render_style", "auto")),  # "auto"|"masks_only"|"ultra_default"
+        mask_alpha=float(cfg.get("mask_alpha", 0.45)),
         draw_labels=bool(cfg.get("draw_labels", True)),
         draw_conf=bool(cfg.get("draw_conf", True)),
         save_json=bool(cfg.get("save_json", True)),
         save_crops=bool(cfg.get("save_crops", False)),
-        save_masks=bool(cfg.get("save_masks", False)),
+        save_masks=bool(cfg.get("save_masks", True)),
         crop_max_size=cfg.get("crop_max_size", None),
+        topk=int(cfg.get("topk", 5)),
     )
 
-    # Single-image mode?
     source_dir = cfg.get("source_dir", None)
     output_root = Path(cfg.get("output_root", "outputs/cv_images")).resolve()
     patterns = cfg.get("source_glob", _DEFAULT_PATTERNS)
@@ -83,7 +84,6 @@ def main():
             stem = ip.stem
             per_dir = output_root / stem
             per_dir.mkdir(parents=True, exist_ok=True)
-            # run
             res = analyzer.analyze_image(str(ip), str(per_dir))
             det_rows.extend(res["detections"])
             batch_summary.append(
@@ -98,10 +98,8 @@ def main():
                 }
             )
 
-        # write batch CSV / summary
         if det_rows:
-            df = pd.DataFrame(det_rows)
-            df.to_csv(output_root / "_detections.csv", index=False)
+            pd.DataFrame(det_rows).to_csv(output_root / "_detections.csv", index=False)
         with open(output_root / "_batch_summary.json", "w") as f:
             json.dump(batch_summary, f, indent=2)
         print(f"[image_analysis] Done. Wrote outputs under {output_root}")

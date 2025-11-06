@@ -1,0 +1,31 @@
+# Single image:
+# source: "data/images/example.jpg"
+# out_dir: "outputs/cv_images/example"
+
+# Folder mode:
+source_dir: "data/images"
+source_glob: ["*.jpg","*.jpeg","*.png","*.bmp","*.tif","*.tiff","*.webp"]
+recursive: false
+output_root: "outputs/cv_images"
+
+# Model / inference
+model: "yolo11n-cls.pt"     # classification; swap to *-cls.pt you prefer
+conf: 0.0                   # not used for cls; harmless
+iou: 0.5                    # not used for cls; harmless
+imgsz: 224                  # typical classifier input (adjust as needed)
+classes: null
+device: null
+
+# Rendering / saving
+save_annotated: true        # preview with predicted label
+render_style: "auto"
+mask_alpha: 0.45
+draw_labels: true
+draw_conf: true
+save_json: true
+save_crops: false
+save_masks: false
+crop_max_size: 1024
+
+# Classification settings
+topk: 5
