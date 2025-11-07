@@ -1,0 +1,5 @@
+# Shared defaults merged by scripts (optional for future tracks)
+device: null          # "mps" | "0" | "cpu"
+seed: 42
+log_level: INFO
+out_root: outputs

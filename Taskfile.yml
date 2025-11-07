@@ -1,0 +1,23 @@
+version: '3'
+
+tasks:
+  sync:cv:
+    cmds:
+      - uv sync -g cv
+
+  sync:all:
+    cmds:
+      - uv sync -g cv -g search -g nlp -g audio -g ts -g recs -g tabular -g rl
+
+  cv:video:
+    cmds:
+      - uv run python scripts/cv/run_video_analysis.py --config configs/cv/video_analysis.yaml
+
+  cv:images:
+    cmds:
+      - uv run python scripts/cv/run_image_analysis.py --config configs/cv/image_analysis_seg.yaml
+
+  cv:search:
+    cmds:
+      - uv run python scripts/cv/search/index_crops.py --config configs/cv/search.yaml --out outputs/cv_images/.index
+      - uv run python scripts/cv/search/query_search.py --index outputs/cv_images/.index --config configs/cv/search.yaml --text "red jersey" --topk 5
