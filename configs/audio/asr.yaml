@@ -1,0 +1,2 @@
+model: "base"    # whisper model size: tiny | base | small | medium | large
+device: null     # "mps" | "0" | "cpu"

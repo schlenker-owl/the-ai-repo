@@ -1,0 +1,11 @@
+inputs:
+  roots:
+    - "data/text"
+
+chunk:
+  max_tokens: 350
+  overlap_tokens: 50
+
+embed:
+  model: "sentence-transformers/all-MiniLM-L6-v2"  # fallback to TF-IDF if not installed
+  device: null
