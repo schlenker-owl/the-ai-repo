@@ -1,5 +1,7 @@
 base_model: "Qwen/Qwen2.5-0.5B-Instruct"
-dataset_path: "data/sft/spirit_alpaca.jsonl"
+# dataset_path: "data/sft/spirit_alpaca.jsonl"
+# dataset_path: "data/sft/spirit_chatml.jsonl"
+dataset_path: "data/sft/spirit_chatml_mix.jsonl"
 output_dir: "outputs/qwen05b_lora"
 
 # REGULAR
