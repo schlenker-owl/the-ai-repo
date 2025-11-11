@@ -26,3 +26,12 @@ eval_after_train: true
 dev_path: "data/sft/dev_toy.jsonl"
 eval_limit: 40
 max_new_tokens: 128
+
+# early stop (counts in logging events, not raw steps)
+early_stop_patience: 15        # how many consecutive logs w/o improvement
+early_stop_min_delta: 0.003    # require at least this loss improvement
+early_stop_window: 5           # moving-avg window (logs) to smooth loss
+early_stop_min_steps: 100      # don’t early-stop before this many steps
+
+# optional QoL
+max_grad_norm: 1.0             # 0 disables; 1.0 is a safe default

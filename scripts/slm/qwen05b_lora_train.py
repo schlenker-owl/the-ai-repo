@@ -7,11 +7,18 @@ import inspect
 import json
 import os
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    EarlyStoppingCallback,
+    Trainer,
+    TrainingArguments,
+)
 from transformers.trainer_callback import TrainerCallback
 
 from airoad.core import pick_device, seed_everything
@@ -49,6 +56,20 @@ ChatML-ready + ablation-friendly metrics and rich timing/logging.
     print_every_steps: 10
     system_prompt: "..."    # used if a ChatML example lacks system
     max_minutes: 0          # hard time limit, 0 = off
+
+    # NEW (Train-loss early stop)
+    early_stop_patience: 0        # 0 disables (counts logging events)
+    early_stop_min_delta: 0.003
+    early_stop_window: 5
+    early_stop_min_steps: 100
+
+    # NEW (Eval-loss early stop)
+    eval_early_stop: false
+    eval_steps: 100               # evaluate every N steps
+    eval_patience: 5              # ES patience across eval events
+
+    # QoL
+    max_grad_norm: 1.0            # grad clipping; 0 disables
 """
 
 # ---------- constants ----------
@@ -197,6 +218,53 @@ class TimeLimitCallback(TrainerCallback):
             return control
 
 
+class PlateauStopCallback(TrainerCallback):
+    """
+    Early stop on training-loss plateau (uses on_log).
+    Patience & window measured in logging events (not raw steps).
+    """
+
+    def __init__(
+        self,
+        patience_logs: int,
+        min_delta: float,
+        window: int,
+        min_steps: int = 0,
+        verbose: bool = True,
+    ):
+        self.patience = max(1, patience_logs)
+        self.min_delta = float(min_delta)
+        self.window = max(1, window)
+        self.min_steps = int(min_steps)
+        self.verbose = verbose
+        self.history = deque(maxlen=self.window)
+        self.best = float("inf")
+        self.stalled = 0
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if not logs or "loss" not in logs:
+            return
+        loss = float(logs["loss"])
+        self.history.append(loss)
+        if len(self.history) < self.window:
+            return  # need enough points for smoothing
+        smoothed = sum(self.history) / len(self.history)
+        improved = (self.best - smoothed) >= self.min_delta
+        if improved:
+            self.best = smoothed
+            self.stalled = 0
+        else:
+            self.stalled += 1
+            if state.global_step >= self.min_steps and self.stalled >= self.patience:
+                if self.verbose:
+                    print(
+                        f"[EarlyStop] Plateau: best={self.best:.4f}, now={smoothed:.4f}, "
+                        f"Δ<{self.min_delta} for {self.patience} logs @ step {state.global_step}"
+                    )
+                control.should_training_stop = True
+                return control
+
+
 # ---------- main ----------
 def main():
     ap = argparse.ArgumentParser()
@@ -220,6 +288,19 @@ def main():
     sys_prompt = cfg.get("system_prompt", SYS_DEFAULT)
     max_minutes = int(cfg.get("max_minutes", 0))
 
+    # Early stop knobs (train-loss plateau)
+    es_patience = int(cfg.get("early_stop_patience", 0))  # 0 disables
+    es_min_delta = float(cfg.get("early_stop_min_delta", 0.0))
+    es_window = int(cfg.get("early_stop_window", 1))
+    es_min_steps = int(cfg.get("early_stop_min_steps", 0))
+
+    # Eval-based early stop knobs (optional)
+    eval_early_stop = bool(cfg.get("eval_early_stop", False))
+    eval_steps = int(cfg.get("eval_steps", max(1, print_every * 5)))
+    eval_patience = int(cfg.get("eval_patience", 5))
+
+    max_grad_norm = float(cfg.get("max_grad_norm", 1.0))
+
     # tokenizer early (needed for chat template)
     tok = _ensure_tok(AutoTokenizer.from_pretrained(base, use_fast=True))
 
@@ -227,30 +308,32 @@ def main():
     path = Path(cfg["dataset_path"])
     rows = [json.loads(x) for x in path.read_text().splitlines() if x.strip()]
 
-    texts: List[str] = []
-    if "messages" in rows[0]:
-        # Native ChatML
-        for r in rows:
-            messages = r["messages"]
-            # inject system if missing
-            if not any(m.get("role") == "system" for m in messages):
-                messages = [{"role": "system", "content": sys_prompt}] + messages
-            s = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-            texts.append(s)
-    else:
-        # Alpaca triples → ChatML
-        for r in rows:
-            instr = (r.get("instruction") or "").strip()
-            ctx = (r.get("input") or "").strip()
-            ans = (r.get("output") or "").strip()
-            user = instr if not ctx else f"{instr}\n\n{ctx}"
-            messages = [
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": user},
-                {"role": "assistant", "content": ans},
-            ]
-            s = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
-            texts.append(s)
+    def as_chatml_texts(items: List[Dict[str, Any]]) -> List[str]:
+        texts_local: List[str] = []
+        if items and "messages" in items[0]:
+            for r in items:
+                messages = r["messages"]
+                if not any(m.get("role") == "system" for m in messages):
+                    messages = [{"role": "system", "content": sys_prompt}] + messages
+                s = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+                texts_local.append(s)
+        else:
+            for r in items:
+                instr = (r.get("instruction") or "").strip()
+                ctx = (r.get("input") or "").strip()
+                ans = (r.get("output") or "").strip()
+                user = instr if not ctx else f"{instr}\n\n{ctx}"
+                messages = [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user},
+                    {"role": "assistant", "content": ans},
+                ]
+                s = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+                texts_local.append(s)
+        return texts_local
+
+    # Train texts
+    texts = as_chatml_texts(rows)
 
     # Optional ablation subset
     ablate_n = int(cfg.get("ablate_examples", 0))
@@ -259,9 +342,18 @@ def main():
 
     train_ds = HFDataset.from_dict({"text": texts}).with_format("python")
 
+    # Optional eval dataset (only if eval_early_stop enabled and dev_path present)
+    eval_ds = None
+    if eval_early_stop and cfg.get("dev_path"):
+        dev_path = Path(cfg["dev_path"])
+        if dev_path.exists():
+            dev_rows = [json.loads(x) for x in dev_path.read_text().splitlines() if x.strip()]
+            eval_texts = as_chatml_texts(dev_rows)
+            eval_ds = HFDataset.from_dict({"text": eval_texts}).with_format("python")
+
     # ----- Approx token count (for throughput report) -----
-    enc = tok(texts, truncation=True, max_length=max_len, add_special_tokens=True)
-    approx_tokens = int(sum(len(ids) for ids in enc["input_ids"]))
+    # enc = tok(texts, truncation=True, max_length=max_len, add_special_tokens=True)
+    # approx_tokens = int(sum(len(ids) for ids in enc["input_ids"]))
 
     # ----- Model -----
     try:
@@ -309,6 +401,16 @@ def main():
     live_cb = LivePrinterCallback(total_steps_est=max_steps, t0=t0)
     time_cb = TimeLimitCallback(max_minutes, t0)
 
+    plateau_cb = None
+    if int(cfg.get("early_stop_patience", 0)) > 0:
+        plateau_cb = PlateauStopCallback(
+            patience_logs=es_patience,
+            min_delta=es_min_delta,
+            window=es_window,
+            min_steps=es_min_steps,
+            verbose=True,
+        )
+
     if _HAS_TRL:
         print("[qwen05b_lora_train] Using TRL SFTTrainer (ChatML)")
         maxlen_kw = _sft_maxlen_kw()
@@ -322,16 +424,41 @@ def main():
             "logging_steps": print_every,
             "save_steps": max_steps,
             "report_to": ["wandb"] if (cfg.get("log_wandb", False)) else [],
+            "max_grad_norm": max_grad_norm,
         }
         sft_kwargs[maxlen_kw] = max_len
+
+        # eval strategy (optional)
+        if eval_ds is not None:
+            sft_kwargs.update(
+                dict(
+                    evaluation_strategy="steps",
+                    eval_steps=eval_steps,
+                    load_best_model_at_end=True,
+                    metric_for_best_model="eval_loss",
+                    greater_is_better=False,
+                    save_total_limit=2,
+                )
+            )
+
+        # Try to quiet MPS pin-memory warning if supported
         if "dataloader_pin_memory" in inspect.signature(SFTConfig).parameters:
             sft_kwargs["dataloader_pin_memory"] = False
 
         sft_args = SFTConfig(**sft_kwargs)
-        trainer = SFTTrainer(model=model, args=sft_args, train_dataset=train_ds)
+        trainer = SFTTrainer(
+            model=model,
+            args=sft_args,
+            train_dataset=train_ds,
+            eval_dataset=eval_ds,
+        )
         trainer.add_callback(loss_cb)
         trainer.add_callback(live_cb)
         trainer.add_callback(time_cb)
+        if plateau_cb is not None:
+            trainer.add_callback(plateau_cb)
+        if eval_ds is not None and bool(cfg.get("eval_early_stop", False)):
+            trainer.add_callback(EarlyStoppingCallback(early_stopping_patience=eval_patience))
     else:
         print("[qwen05b_lora_train] Using HF Trainer fallback (ChatML)")
         enc2 = tok(texts, truncation=True, max_length=max_len, padding=True, return_tensors=None)
@@ -355,7 +482,7 @@ def main():
                 "labels": T.tensor(ids, dtype=T.long),
             }
 
-        targs = TrainingArguments(
+        targs = dict(
             output_dir=str(out_dir),
             max_steps=max_steps,
             learning_rate=lr,
@@ -366,17 +493,36 @@ def main():
             logging_steps=print_every,
             save_steps=max_steps,
             report_to=["wandb"] if (cfg.get("log_wandb", False)) else [],
+            max_grad_norm=max_grad_norm,
         )
+
+        if eval_ds is not None:
+            targs.update(
+                dict(
+                    evaluation_strategy="steps",
+                    eval_steps=eval_steps,
+                    load_best_model_at_end=True,
+                    metric_for_best_model="eval_loss",
+                    greater_is_better=False,
+                    save_total_limit=2,
+                )
+            )
+
         trainer = Trainer(
             model=model,
-            args=targs,
+            args=TrainingArguments(**targs),
             train_dataset=train_dataset,
+            eval_dataset=eval_ds,
             data_collator=collate,
             tokenizer=tok,
         )
         trainer.add_callback(loss_cb)
         trainer.add_callback(live_cb)
         trainer.add_callback(time_cb)
+        if plateau_cb is not None:
+            trainer.add_callback(plateau_cb)
+        if eval_ds is not None and bool(cfg.get("eval_early_stop", False)):
+            trainer.add_callback(EarlyStoppingCallback(early_stopping_patience=eval_patience))
 
     # ----- Train -----
     t_setup = time.perf_counter() - t0
@@ -390,12 +536,12 @@ def main():
 
     # ----- Metrics summary -----
     metrics = getattr(train_result, "metrics", {}) or {}
-    steps = int(metrics.get("train_steps", metrics.get("global_step", max_steps)))
+    steps = int(metrics.get("train_steps", metrics.get("global_step", cfg.get("max_steps", 0))))
     steps_per_sec = (steps / t_train) if t_train > 0 else 0.0
 
-    last_row = next((r for r in reversed(loss_cb.rows) if "num_tokens" in r), None)
-    cum_tokens = float(last_row["num_tokens"]) if last_row else float(approx_tokens)
-    tokens_per_sec = (cum_tokens / t_train) if t_train > 0 else 0.0
+    # Prefer TRL cumulative token metric if present; else approx dataset tokens
+    # (We didn’t store cumulative tokens explicitly; keep approx throughput)
+    tokens_per_sec = (float(len(texts) * max_len) / t_train) if t_train > 0 else 0.0
 
     first_loss = next((r["loss"] for r in loss_cb.rows if "loss" in r), None)
     last_loss = next((r["loss"] for r in reversed(loss_cb.rows) if "loss" in r), None)
@@ -408,7 +554,9 @@ def main():
 
     report = {
         "examples": len(texts),
-        "approx_dataset_tokens": approx_tokens,
+        "approx_dataset_tokens": int(
+            sum(len(ids) for ids in tok(texts, truncation=True, max_length=max_len)["input_ids"])
+        ),
         "steps": steps,
         "setup_seconds": round(t_setup, 3),
         "train_seconds": round(t_train, 3),
@@ -422,8 +570,10 @@ def main():
         "last_logged_loss": round(last_loss, 6) if last_loss is not None else None,
         "loss_delta": round(loss_delta, 6) if loss_delta is not None else None,
         "loss_delta_pct": round(loss_pct, 3) if loss_pct is not None else None,
-        "ablate_examples": ablate_n,
-        "ablate_seed": ablate_seed,
+        "ablate_examples": int(cfg.get("ablate_examples", 0)),
+        "ablate_seed": int(cfg.get("ablate_seed", 42)),
+        "early_stop_plateau": bool(es_patience > 0),
+        "eval_early_stop": bool(eval_early_stop and eval_ds is not None),
     }
     print("⏱ timing/ablation report:\n", json.dumps(report, indent=2))
 
@@ -437,7 +587,7 @@ def main():
             w.writeheader()
             w.writerows(loss_cb.rows)
 
-    # Optional quick eval
+    # Optional quick eval (post-train qualitative check)
     if cfg.get("eval_after_train", True):
         base_for_merge = base if _HAS_PEFT else None
         evaluate_and_print(
