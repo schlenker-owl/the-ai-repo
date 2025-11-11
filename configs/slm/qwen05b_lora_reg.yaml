@@ -1,0 +1,28 @@
+base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+dataset_path: "data/sft/spirit_alpaca.jsonl"
+output_dir: "outputs/qwen05b_lora"
+
+# REGULAR
+max_steps: 500
+learning_rate: 5.0e-5
+batch_size: 1
+grad_accum: 32
+max_seq_len: 1024
+print_every_steps: 10
+log_wandb: false
+
+# LoRA
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules: "auto"
+
+# Ablation off
+ablate_examples: 0
+ablate_seed: 42
+
+# Eval
+eval_after_train: true
+dev_path: "data/sft/dev_toy.jsonl"
+eval_limit: 40
+max_new_tokens: 128

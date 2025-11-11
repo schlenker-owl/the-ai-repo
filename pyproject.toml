@@ -32,7 +32,21 @@ dependencies = [
 
 [project.optional-dependencies]
 rag = ["faiss-cpu>=1.8.0", "sentence-transformers>=3.0.0"]
-llm = ["peft>=0.17.1", "trl>=0.24.0", "wandb>=0.22.3"]
+llm = [
+  "torch>=2.3.0",          # MPS wheels are on PyPI; uv will fetch the right macOS/arm64 build
+  "torchvision>=0.18.0",
+  "torchaudio>=2.3.0",
+  "transformers>=4.44.0",
+  "datasets>=2.20.0",
+  "peft>=0.11.0",
+  "accelerate>=0.33.0",
+  "sentencepiece>=0.2.0",
+  "evaluate>=0.4.1",
+  # optional but handy:
+  "wandb>=0.17.0",
+  # if you use TRL SFTTrainer in the script (we try it first and fall back if missing):
+  "trl>=0.9.6",
+]
 # ^ removed the accidental third-party "llm" and the confusing "sentence-transformers" extra group
 
 [dependency-groups]
@@ -56,3 +70,7 @@ include = ["airoad*"]           # <-- discover your package under src/airoad
 
 [tool.setuptools.package-data]
 airoad = ["py.typed"]
+
+[tool.uv]
+# put the virtualenv inside the repo (nice for CI and isolation)
+package = true

@@ -1,0 +1,27 @@
+base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+# dataset_path: "data/sft/spirit_alpaca.jsonl"
+dataset_path: "data/sft/spirit_chatml.jsonl"
+output_dir: "outputs/qwen05b_lora_fast"
+
+# FAST
+max_steps: 120          # ~2x faster than 250, ~5–10 min target on M4 Air
+learning_rate: 6.0e-5   # a touch higher for small runs
+batch_size: 1
+grad_accum: 8           # lower accumulation = faster wall-time
+max_seq_len: 512        # big win: attention cost ~L^2; 512 is ~4x cheaper than 1024
+print_every_steps: 5
+log_wandb: false
+
+# LoRA
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules: "auto"
+
+# Ablation controls
+ablate_examples: 96     # train on a tiny shuffled slice
+ablate_seed: 42
+max_minutes: 10         # hard stop (via callback below)
+
+# Eval
+eval_after_train: false # skip eval to save time

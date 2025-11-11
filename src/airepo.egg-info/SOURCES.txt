@@ -8,6 +8,10 @@ src/airepo.egg-info/requires.txt
 src/airepo.egg-info/top_level.txt
 src/airoad/__init__.py
 src/airoad/py.typed
+src/airoad/audio/asr.py
+src/airoad/audio/stitch.py
+src/airoad/audio/summarize.py
+src/airoad/audio/vad.py
 src/airoad/classic/ensemble/random_forest.py
 src/airoad/classic/linear/linear_svm.py
 src/airoad/classic/linear/linreg_numpy.py
@@ -15,6 +19,13 @@ src/airoad/classic/linear/logreg_numpy.py
 src/airoad/classic/linear/ridge_lasso.py
 src/airoad/classic/neighbors/knn.py
 src/airoad/classic/tree/tree_gini.py
+src/airoad/core/__init__.py
+src/airoad/core/device.py
+src/airoad/core/index_store.py
+src/airoad/core/io.py
+src/airoad/core/manifest.py
+src/airoad/core/timers.py
+src/airoad/core/viz.py
 src/airoad/cv/image_analysis.py
 src/airoad/cv/video_analysis.py
 src/airoad/cv/graphics/heatmaps.py
@@ -29,6 +40,11 @@ src/airoad/generative/ddpm_mini.py
 src/airoad/generative/vae.py
 src/airoad/models/naive_bayes.py
 src/airoad/models/softmax_numpy.py
+src/airoad/nlp/chunk.py
+src/airoad/nlp/embed.py
+src/airoad/nlp/eval_rag.py
+src/airoad/nlp/ingest.py
+src/airoad/nlp/rag.py
 src/airoad/optimizers/optimizers.py
 src/airoad/rag/eval.py
 src/airoad/reid/backbone.py
@@ -44,6 +60,10 @@ src/airoad/sft/eval_sft.py
 src/airoad/sft/infer.py
 src/airoad/sft/lora_sft.py
 src/airoad/sft/metrics.py
+src/airoad/timeseries/anomaly.py
+src/airoad/timeseries/eval_ts.py
+src/airoad/timeseries/features.py
+src/airoad/timeseries/forecast.py
 src/airoad/tokenizers/bpe.py
 src/airoad/transformers/gpt_tiny.py
 src/airoad/unsupervised/gmm.py

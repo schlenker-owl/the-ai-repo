@@ -30,9 +30,17 @@ Provides-Extra: rag
 Requires-Dist: faiss-cpu>=1.8.0; extra == "rag"
 Requires-Dist: sentence-transformers>=3.0.0; extra == "rag"
 Provides-Extra: llm
-Requires-Dist: peft>=0.17.1; extra == "llm"
-Requires-Dist: trl>=0.24.0; extra == "llm"
-Requires-Dist: wandb>=0.22.3; extra == "llm"
+Requires-Dist: torch>=2.3.0; extra == "llm"
+Requires-Dist: torchvision>=0.18.0; extra == "llm"
+Requires-Dist: torchaudio>=2.3.0; extra == "llm"
+Requires-Dist: transformers>=4.44.0; extra == "llm"
+Requires-Dist: datasets>=2.20.0; extra == "llm"
+Requires-Dist: peft>=0.11.0; extra == "llm"
+Requires-Dist: accelerate>=0.33.0; extra == "llm"
+Requires-Dist: sentencepiece>=0.2.0; extra == "llm"
+Requires-Dist: evaluate>=0.4.1; extra == "llm"
+Requires-Dist: wandb>=0.17.0; extra == "llm"
+Requires-Dist: trl>=0.9.6; extra == "llm"
 Dynamic: license-file
 
 # the-ai-repo (package: `airoad`) — Hands-On AI/ML/LLMs Roadmap

@@ -9,3 +9,4 @@ outputs
 datasets/
 runs/
 tmp/
+checkpoints/
