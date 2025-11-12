@@ -1,0 +1,53 @@
+# ============================================================
+# Qwen-0.5B • LoRA + DPO • FAST probe
+# ------------------------------------------------------------
+# Pairs format: JSONL with keys {prompt, chosen, rejected}
+# When building pairs from ChatML, see build_dpo_pairs_from_chatml.py
+# ============================================================
+
+base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+system_prompt: "You are a compassionate, practical spiritual coach. Be concise, kind, and useful."
+
+# DPO pairs (train)
+pairs_path: "data/sft/spirit_dpo_pairs_trunc.jsonl"
+# Optional eval pairs for eval-early-stop
+# dev_pairs_path: "data/sft/spirit_dpo_pairs_dev.jsonl"
+
+output_dir: "outputs/qwen05b_dpo_fast_plain"
+
+# Fast run knobs
+max_steps: 60
+learning_rate: 5.0e-5
+batch_size: 1
+grad_accum: 8
+print_every_steps: 5
+log_wandb: false
+
+# DPO beta (temperature of the policy preference objective)
+dpo_beta: 0.1
+
+# LoRA
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_mode: "attn_mlp"
+use_dora: false
+
+# Fast ablation + time cap
+ablate_examples: 0     # set >0 to subsample pairs
+ablate_seed: 42
+max_minutes: 10
+
+# Early stop on train logs (optional)
+early_stop_patience: 0     # 0 disables; e.g., 15 for ~150 steps w/ print_every=10
+early_stop_min_delta: 0.002
+early_stop_window: 5
+early_stop_min_steps: 80
+
+# Eval-early-stop (off by default)
+eval_early_stop: false
+eval_steps: 50
+eval_patience: 5
+
+# QoL
+max_grad_norm: 1.0
