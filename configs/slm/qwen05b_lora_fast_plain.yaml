@@ -1,0 +1,54 @@
+# ======================================================================
+# Qwen-0.5B  •  Plain LoRA SFT  •  FAST probe
+# ----------------------------------------------------------------------
+# WHEN TO USE
+# - Baseline SFT. No DoRA, no KL. Easiest to reason about; use as control.
+# - Use this to gauge the raw effect of your data/formatting.
+# ======================================================================
+
+base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+dataset_path: "data/sft/spirit_chatml.jsonl"
+system_prompt: "You are a compassionate, practical spiritual coach. Be concise, kind, and useful."
+output_dir: "outputs/qwen05b_fast_plain"
+
+# Slightly longer fast probe here for a clearer baseline
+max_steps: 60              # 120 vs 60 gives a steadier curve without much extra time
+learning_rate: 6.0e-5
+batch_size: 1
+grad_accum: 8
+max_seq_len: 512           # ⚠ attention ~ O(L^2); 512 is ~4× cheaper than 1024
+print_every_steps: 5
+log_wandb: false
+
+# LoRA
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_mode: "attn_mlp"   # auto | attn | attn_mlp
+use_dora: false
+
+# KL-SFT (off)
+kl_lambda: 0.0
+kl_tau: 1.0
+
+# Fast shortcuts
+ablate_examples: 96
+ablate_seed: 42
+max_minutes: 10
+
+# Early stop (train-loss plateau)
+early_stop_patience: 15
+early_stop_min_delta: 0.003
+early_stop_window: 5
+early_stop_min_steps: 100
+
+# Eval-loss early stop (off for fast)
+eval_early_stop: false
+eval_steps: 100
+eval_patience: 5
+
+# QoL
+max_grad_norm: 1.0
+
+# Post-train quick eval
+eval_after_train: false

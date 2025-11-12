@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import torch
+import torch.nn.functional as F
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -43,33 +44,15 @@ except Exception:
 Qwen-0.5B LoRA trainer (Apple Silicon friendly, TRL-first with safe fallback)
 ChatML-ready + ablation-friendly metrics and rich timing/logging.
 
-- Detects dataset format:
-    * ChatML lines: {"messages":[{"role":"system|user|assistant","content":...}, ...]}
-    * Alpaca triples: {"instruction","input","output"} (auto-wrapped into ChatML on-the-fly)
-- Uses tokenizer.apply_chat_template(...) for Qwen-style formatting.
-- Adds elapsed seconds (setup/train/total), steps/sec, approx tokens/sec.
-- Logs trainable vs total params (LoRA size & %).
-- Saves per-step logs to CSV/JSON (loss trend).
-- Optional controls via YAML:
-    ablate_examples: 0      # 0 = off, else keep first N shuffled examples
-    ablate_seed: 42
-    print_every_steps: 10
-    system_prompt: "..."    # used if a ChatML example lacks system
-    max_minutes: 0          # hard time limit, 0 = off
+NEW:
+- DoRA switch: use_dora: true|false (default false)
+- KL-regularized SFT: kl_lambda (default 0 disables), kl_tau (temperature), works in TRL SFTTrainer and HF fallback.
 
-    # NEW (Train-loss early stop)
-    early_stop_patience: 0        # 0 disables (counts logging events)
-    early_stop_min_delta: 0.003
-    early_stop_window: 5
-    early_stop_min_steps: 100
-
-    # NEW (Eval-loss early stop)
-    eval_early_stop: false
-    eval_steps: 100               # evaluate every N steps
-    eval_patience: 5              # ES patience across eval events
-
-    # QoL
-    max_grad_norm: 1.0            # grad clipping; 0 disables
+Still includes:
+- ChatML / Alpaca auto-format
+- Train-loss plateau early-stop + optional eval-loss early-stop
+- Grad clipping (max_grad_norm)
+- Live prints + CSV/JSON logs
 """
 
 # ---------- constants ----------
@@ -129,6 +112,35 @@ def _detect_lora_targets(model) -> List[str]:
     if has("query_key_value"):
         return ["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"]
     return []
+
+
+def _targets_by_mode(model, mode: str) -> List[str]:
+    """
+    mode: 'auto' (default), 'attn', 'attn_mlp'
+    """
+    if mode == "attn":
+        names = [n for n, _ in model.named_modules()]
+
+        def has(s):
+            return any(s in n for n in names)
+
+        t = ["q_proj", "k_proj", "v_proj"]
+        t += [x for x in ("o_proj", "out_proj") if has(x)]
+        return t
+    if mode in ("attn_mlp", "attn+mlp"):
+        names = [n for n, _ in model.named_modules()]
+
+        def has(s):
+            return any(s in n for n in names)
+
+        t = ["q_proj", "k_proj", "v_proj"]
+        t += [x for x in ("o_proj", "out_proj") if has(x)]
+        for mlp in ("gate_proj", "up_proj", "down_proj"):
+            if has(mlp):
+                t.append(mlp)
+        return t
+    # auto (detector)
+    return _detect_lora_targets(model)
 
 
 def _maybe_subset(texts: List[str], n: int, seed: int) -> List[str]:
@@ -265,6 +277,112 @@ class PlateauStopCallback(TrainerCallback):
                 return control
 
 
+# ---------- KL-regularized trainers ----------
+class KLSFTTrainer(SFTTrainer):
+    """
+    SFTTrainer with a KL penalty to a frozen reference (base) model.
+    loss = CE + kl_lambda * KL( teacher || student ), temperature kl_tau
+    """
+
+    def __init__(
+        self, *args, ref_model=None, kl_lambda: float = 0.0, kl_tau: float = 1.0, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.ref_model = ref_model
+        self.kl_lambda = float(kl_lambda)
+        self.kl_tau = float(kl_tau)
+        if self.ref_model is not None:
+            for p in self.ref_model.parameters():
+                p.requires_grad = False
+            self.ref_model.eval()
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        labels = inputs.get("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits  # [B, T, V]
+
+        # shift for next-token
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
+        ce = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=-100,
+        )
+        loss = ce
+
+        if self.ref_model is not None and self.kl_lambda > 0.0:
+            with torch.no_grad():
+                ref_out = self.ref_model(
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs.get("attention_mask", None),
+                )
+                ref_logits = ref_out.logits[:, :-1, :].contiguous()
+
+            tau = self.kl_tau
+            log_p_s = F.log_softmax(shift_logits / tau, dim=-1)
+            log_p_t = F.log_softmax(ref_logits / tau, dim=-1)
+            p_t = torch.exp(log_p_t)
+
+            kl_pos = (p_t * (log_p_t - log_p_s)).sum(dim=-1)  # [B, T-1]
+
+            mask = (shift_labels != -100).float()
+            kl = (kl_pos * mask).sum() / mask.sum().clamp_min(1.0)
+
+            # tau^2 scaling keeps gradient magnitudes comparable
+            loss = loss + self.kl_lambda * (tau * tau) * kl
+
+        return (loss, outputs) if return_outputs else loss
+
+
+class KLTrainer(Trainer):
+    """HF Trainer fallback with the same KL penalty."""
+
+    def __init__(
+        self, *args, ref_model=None, kl_lambda: float = 0.0, kl_tau: float = 1.0, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.ref_model = ref_model
+        self.kl_lambda = float(kl_lambda)
+        self.kl_tau = float(kl_tau)
+        if self.ref_model is not None:
+            for p in self.ref_model.parameters():
+                p.requires_grad = False
+            self.ref_model.eval()
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        labels = inputs.get("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
+        ce = F.cross_entropy(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+            ignore_index=-100,
+        )
+        loss = ce
+
+        if self.ref_model is not None and self.kl_lambda > 0.0:
+            with torch.no_grad():
+                ref_out = self.ref_model(
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs.get("attention_mask", None),
+                )
+                ref_logits = ref_out.logits[:, :-1, :].contiguous()
+
+            tau = self.kl_tau
+            log_p_s = F.log_softmax(shift_logits / tau, dim=-1)
+            log_p_t = F.log_softmax(ref_logits / tau, dim=-1)
+            p_t = torch.exp(log_p_t)
+            kl_pos = (p_t * (log_p_t - log_p_s)).sum(dim=-1)
+            mask = (shift_labels != -100).float()
+            kl = (kl_pos * mask).sum() / mask.sum().clamp_min(1.0)
+            loss = loss + self.kl_lambda * (tau * tau) * kl
+
+        return (loss, outputs) if return_outputs else loss
+
+
 # ---------- main ----------
 def main():
     ap = argparse.ArgumentParser()
@@ -299,7 +417,16 @@ def main():
     eval_steps = int(cfg.get("eval_steps", max(1, print_every * 5)))
     eval_patience = int(cfg.get("eval_patience", 5))
 
+    # QoL
     max_grad_norm = float(cfg.get("max_grad_norm", 1.0))
+
+    # LoRA/Dora knobs
+    lora_target_mode = str(cfg.get("lora_target_mode", "auto")).lower()  # auto|attn|attn_mlp
+    use_dora = bool(cfg.get("use_dora", False))
+
+    # KL knobs
+    kl_lambda = float(cfg.get("kl_lambda", 0.0))  # 0 disables
+    kl_tau = float(cfg.get("kl_tau", 1.0))
 
     # tokenizer early (needed for chat template)
     tok = _ensure_tok(AutoTokenizer.from_pretrained(base, use_fast=True))
@@ -355,26 +482,35 @@ def main():
     # enc = tok(texts, truncation=True, max_length=max_len, add_special_tokens=True)
     # approx_tokens = int(sum(len(ids) for ids in enc["input_ids"]))
 
-    # ----- Model -----
+    # ----- Models -----
+    # student (trainable)
     try:
         model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32)
     except TypeError:
         model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float32)
     model.to(dev)
 
-    # ----- LoRA -----
+    # reference (teacher) for KL
+    ref_model = None
+    if kl_lambda > 0.0:
+        try:
+            ref_model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32).to(dev)
+        except TypeError:
+            ref_model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float32).to(
+                dev
+            )
+        ref_model.eval()
+        for p in ref_model.parameters():
+            p.requires_grad = False
+
+    # ----- LoRA / DoRA -----
     is_lora = True and _HAS_PEFT
-    targets_cfg = cfg.get("target_modules", "auto")
-    targets = (
-        _detect_lora_targets(model)
-        if targets_cfg == "auto"
-        else [t.strip() for t in str(targets_cfg).split(",") if t.strip()]
-    )
+    targets = _targets_by_mode(model, lora_target_mode)
     if not targets:
         print("[qwen05b_lora_train] Could not detect LoRA targets; training full-finetune instead.")
         is_lora = False
     if is_lora:
-        lconf = LoraConfig(
+        lconf_kwargs = dict(
             r=int(cfg["lora_r"]),
             lora_alpha=int(cfg["lora_alpha"]),
             lora_dropout=float(cfg["lora_dropout"]),
@@ -382,13 +518,30 @@ def main():
             bias="none",
             task_type="CAUSAL_LM",
         )
+        # PEFT supports DoRA via use_dora in newer versions; be resilient
+        try:
+            lconf_kwargs["use_dora"] = use_dora
+        except Exception:
+            pass
+        try:
+            lconf = LoraConfig(**lconf_kwargs)
+        except TypeError:
+            # fallback if older signature: remove use_dora if not supported
+            lconf_kwargs.pop("use_dora", None)
+            lconf = LoraConfig(**lconf_kwargs)
         model = get_peft_model(model, lconf)
 
     # Param report
     pcounts = _count_params(model)
+    extras = []
+    if use_dora and is_lora:
+        extras.append("DoRA")
+    if kl_lambda > 0.0:
+        extras.append(f"KL={kl_lambda}@tau={kl_tau}")
+    extras_str = (" | " + " ; ".join(extras)) if extras else ""
     print(
         f"[params] total={pcounts['total']:,}  trainable={pcounts['trainable']:,}  "
-        f"({pcounts['trainable_pct']}%)  targets={targets if is_lora else 'FULL'}"
+        f"({pcounts['trainable_pct']}%)  targets={targets if is_lora else 'FULL'}{extras_str}"
     )
 
     # ----- Trainer (TRL first) -----
@@ -412,7 +565,7 @@ def main():
         )
 
     if _HAS_TRL:
-        print("[qwen05b_lora_train] Using TRL SFTTrainer (ChatML)")
+        print("[qwen05b_lora_train] Using TRL SFTTrainer (ChatML + KL option)")
         maxlen_kw = _sft_maxlen_kw()
         sft_kwargs = {
             "output_dir": str(out_dir),
@@ -428,7 +581,6 @@ def main():
         }
         sft_kwargs[maxlen_kw] = max_len
 
-        # eval strategy (optional)
         if eval_ds is not None:
             sft_kwargs.update(
                 dict(
@@ -441,17 +593,30 @@ def main():
                 )
             )
 
-        # Try to quiet MPS pin-memory warning if supported
         if "dataloader_pin_memory" in inspect.signature(SFTConfig).parameters:
             sft_kwargs["dataloader_pin_memory"] = False
 
         sft_args = SFTConfig(**sft_kwargs)
-        trainer = SFTTrainer(
-            model=model,
-            args=sft_args,
-            train_dataset=train_ds,
-            eval_dataset=eval_ds,
-        )
+
+        # Choose trainer: KL or plain
+        if kl_lambda > 0.0 and ref_model is not None:
+            trainer = KLSFTTrainer(
+                model=model,
+                args=sft_args,
+                train_dataset=train_ds,
+                eval_dataset=eval_ds,
+                ref_model=ref_model,
+                kl_lambda=kl_lambda,
+                kl_tau=kl_tau,
+            )
+        else:
+            trainer = SFTTrainer(
+                model=model,
+                args=sft_args,
+                train_dataset=train_ds,
+                eval_dataset=eval_ds,
+            )
+
         trainer.add_callback(loss_cb)
         trainer.add_callback(live_cb)
         trainer.add_callback(time_cb)
@@ -460,7 +625,7 @@ def main():
         if eval_ds is not None and bool(cfg.get("eval_early_stop", False)):
             trainer.add_callback(EarlyStoppingCallback(early_stopping_patience=eval_patience))
     else:
-        print("[qwen05b_lora_train] Using HF Trainer fallback (ChatML)")
+        print("[qwen05b_lora_train] Using HF Trainer fallback (ChatML + KL option)")
         enc2 = tok(texts, truncation=True, max_length=max_len, padding=True, return_tensors=None)
         train_dataset = [
             {"input_ids": ids, "attention_mask": am}
@@ -495,7 +660,6 @@ def main():
             report_to=["wandb"] if (cfg.get("log_wandb", False)) else [],
             max_grad_norm=max_grad_norm,
         )
-
         if eval_ds is not None:
             targs.update(
                 dict(
@@ -507,15 +671,27 @@ def main():
                     save_total_limit=2,
                 )
             )
-
-        trainer = Trainer(
-            model=model,
-            args=TrainingArguments(**targs),
-            train_dataset=train_dataset,
-            eval_dataset=eval_ds,
-            data_collator=collate,
-            tokenizer=tok,
-        )
+        if kl_lambda > 0.0 and ref_model is not None:
+            trainer = KLTrainer(
+                model=model,
+                args=TrainingArguments(**targs),
+                train_dataset=train_dataset,
+                eval_dataset=eval_ds,
+                data_collator=collate,
+                tokenizer=tok,
+                ref_model=ref_model,
+                kl_lambda=kl_lambda,
+                kl_tau=kl_tau,
+            )
+        else:
+            trainer = Trainer(
+                model=model,
+                args=TrainingArguments(**targs),
+                train_dataset=train_dataset,
+                eval_dataset=eval_ds,
+                data_collator=collate,
+                tokenizer=tok,
+            )
         trainer.add_callback(loss_cb)
         trainer.add_callback(live_cb)
         trainer.add_callback(time_cb)
@@ -538,9 +714,6 @@ def main():
     metrics = getattr(train_result, "metrics", {}) or {}
     steps = int(metrics.get("train_steps", metrics.get("global_step", cfg.get("max_steps", 0))))
     steps_per_sec = (steps / t_train) if t_train > 0 else 0.0
-
-    # Prefer TRL cumulative token metric if present; else approx dataset tokens
-    # (We didn’t store cumulative tokens explicitly; keep approx throughput)
     tokens_per_sec = (float(len(texts) * max_len) / t_train) if t_train > 0 else 0.0
 
     first_loss = next((r["loss"] for r in loss_cb.rows if "loss" in r), None)
@@ -574,6 +747,10 @@ def main():
         "ablate_seed": int(cfg.get("ablate_seed", 42)),
         "early_stop_plateau": bool(es_patience > 0),
         "eval_early_stop": bool(eval_early_stop and eval_ds is not None),
+        "use_dora": use_dora,
+        "kl_lambda": kl_lambda,
+        "kl_tau": kl_tau,
+        "lora_target_mode": lora_target_mode,
     }
     print("⏱ timing/ablation report:\n", json.dumps(report, indent=2))
 

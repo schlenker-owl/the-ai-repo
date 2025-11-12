@@ -1,0 +1,72 @@
+# ======================================================================
+# Qwen-0.5B  •  LoRA + KL SFT  •  FAST probe (~5–10 min on M4 Air)
+# ----------------------------------------------------------------------
+# WHEN TO USE
+# - You want SFT with a small KL penalty to keep the tuned model close
+#   to the base policy (reduces drift/hallucinations on tiny datasets).
+#
+# KEY IDEAS
+# - KL term encourages student logits to stay near teacher (base model).
+# - Short run: smaller max_steps, seq_len=512, ablate_examples to 96.
+# - Use higher LR than long runs to see visible loss drop quickly.
+# ======================================================================
+
+base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+
+# --- DATA --------------------------------------------------------------
+# ChatML dataset (mixed: core + markdown slice + negatives)
+dataset_path: "data/sft/spirit_chatml.jsonl"
+
+# Consistent voice across examples
+system_prompt: "You are a compassionate, practical spiritual coach. Be concise, kind, and useful."
+
+# Where artifacts (adapters, logs) will be written
+output_dir: "outputs/qwen05b_fast_kl"
+
+# --- TRAINING SPEED / QUALITY TRADEOFFS -------------------------------
+# Fast probe: enough to see loss trend and sample style changes
+max_steps: 60               # raise to 120–500 for deeper tuning
+learning_rate: 5.0e-5       # slightly lower than plain SFT for stability w/ KL
+batch_size: 1
+grad_accum: 8               # smaller accum → faster wall time
+max_seq_len: 512            # ⚠ attention ~ O(L^2); 512 is ~4× cheaper than 1024
+print_every_steps: 5
+log_wandb: false
+
+# --- LORA (PARAM-EFFICIENT FINE-TUNING) -------------------------------
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+# Target placement:
+#   - "attn"      → q/k/v/(o)
+#   - "attn_mlp"  → attention + MLP proj (gate/up/down); higher capacity
+#   - "auto"      → best-effort detection
+lora_target_mode: "attn_mlp"
+use_dora: false            # DoRA off in this KL-only lane
+
+# --- KL-REGULARIZED SFT (ON) -----------------------------------------
+# Typical range: 0.03–0.10. Start modest; raise if drift is high.
+kl_lambda: 0.05
+kl_tau: 1.0                # teacher temperature (1.0 = standard)
+
+# --- FAST-PROBE SHORTCUTS --------------------------------------------
+ablate_examples: 96        # take a shuffled slice to speed up
+ablate_seed: 42
+max_minutes: 10            # hard time cap (time-limit callback)
+
+# --- EARLY STOP (TRAIN-LOSS PLATEAU) ---------------------------------
+early_stop_patience: 15    # measured in logging events (not raw steps)
+early_stop_min_delta: 0.003
+early_stop_window: 5
+early_stop_min_steps: 100  # avoid stopping during warmup
+
+# --- EVAL-LOSS EARLY STOP (DISABLED FOR FAST) -------------------------
+eval_early_stop: false
+eval_steps: 100
+eval_patience: 5
+
+# --- QoL --------------------------------------------------------------
+max_grad_norm: 1.0         # gradient clipping; 0 disables
+
+# --- POST-TRAIN QUICK EVAL (DISABLED HERE) ---------------------------
+eval_after_train: false
