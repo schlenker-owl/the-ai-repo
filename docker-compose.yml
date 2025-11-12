@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  ai-server:
+    build:
+      context: .
+      dockerfile: servers/fastapi_lora/Dockerfile
+    image: the-ai-repo/ai-server:local
+    container_name: ai-server
+    ports:
+      - "8000:8000"
+    environment:
+      # Choose exactly one of the two paths below:
+      # 1) Merged checkpoint (recommended)
+      MODEL_ID: "checkpoints/qwen05b_fast_plain_merged"
+      LORA_ADAPTERS_DIR: ""         # leave empty when using merged
+      # 2) Or base+adapters (uncomment and set; comment out MODEL_ID above if using remote base)
+      # MODEL_ID: "Qwen/Qwen2.5-0.5B-Instruct"
+      # LORA_ADAPTERS_DIR: "outputs/qwen05b_fast_plain"
+
+      SYSTEM_PROMPT: "You are a compassionate, practical spiritual coach. Be concise, kind, and useful."
+      MAX_NEW_TOKENS: "160"
+      TEMPERATURE: "0.2"
+      HF_HOME: "/var/cache/huggingface"
+      DEVICE: "cpu"
+    volumes:
+      - ./checkpoints:/app/checkpoints:ro
+      - ./outputs:/app/outputs:ro
+      - hf-cache:/var/cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  hf-cache:

@@ -1,0 +1,14 @@
+.pytest_cache
+.venv
+.ruff_cache
+.github
+.env
+data/
+__pycache__/
+outputs
+.DS_Store
+# *.pt
+# datasets/
+runs/
+tmp/
+# checkpoints/

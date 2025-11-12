@@ -22,3 +22,15 @@ train-reg:
 
 train-long:
 	uv run python scripts/slm/qwen05b_lora_train.py --config configs/slm/qwen05b_lora_long.yaml
+
+ai-build:
+	docker compose build ai-server
+
+ai-up:
+	docker compose up -d ai-server
+
+ai-logs:
+	docker compose logs -f ai-server
+
+ai-down:
+	docker compose down
