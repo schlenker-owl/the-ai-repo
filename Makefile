@@ -23,6 +23,7 @@ train-reg:
 train-long:
 	uv run python scripts/slm/qwen05b_lora_train.py --config configs/slm/qwen05b_lora_long.yaml
 
+# CPU container
 ai-build:
 	docker compose build ai-server
 
@@ -34,3 +35,7 @@ ai-logs:
 
 ai-down:
 	docker compose down
+
+# Uses MPS on MacOS hardware; much faster than a CPU container
+local-ai-server:
+	uv run uvicorn servers.applied_ai.app:app --host 0.0.0.0 --port 8000

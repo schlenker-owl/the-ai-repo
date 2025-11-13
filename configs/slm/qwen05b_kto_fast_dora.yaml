@@ -1,0 +1,43 @@
+# ============================================================
+# Qwen-0.5B • DoRA + KTO • FAST probe (chosen-only data)
+# ============================================================
+
+base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+system_prompt: "You are a compassionate, practical spiritual coach. Be concise, kind, and useful."
+dataset_path: "data/sft/spirit_chatml.jsonl"
+output_dir: "outputs/qwen05b_kto_fast_plain"
+
+max_steps: 120
+learning_rate: 5.0e-5
+batch_size: 2
+grad_accum: 8
+print_every_steps: 5
+log_wandb: false
+
+kto_beta: 0.1
+desirable_weight: 1.0
+undesirable_weight: 1.0
+
+# NEW – synth negatives
+kto_neg_mode: "prefix"   # or "truncate"
+kto_neg_ratio: 1.0       # 1 negative per positive
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_mode: "attn_mlp"
+use_dora: true
+
+ablate_examples: 0
+ablate_seed: 42
+max_minutes: 10
+
+early_stop_patience: 0
+early_stop_min_delta: 0.002
+early_stop_window: 5
+early_stop_min_steps: 80
+
+eval_early_stop: false
+eval_steps: 50
+eval_patience: 5
+max_grad_norm: 1.0
