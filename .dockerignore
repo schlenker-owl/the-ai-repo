@@ -12,3 +12,4 @@ outputs
 runs/
 tmp/
 # checkpoints/
+ckpts_tinygpt/

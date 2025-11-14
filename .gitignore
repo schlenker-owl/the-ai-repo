@@ -10,3 +10,4 @@ datasets/
 runs/
 tmp/
 checkpoints/
+ckpts_tinygpt/
