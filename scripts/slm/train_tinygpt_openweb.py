@@ -20,7 +20,6 @@ from torch import nn
 from airoad.transformers.tinygpt_modern import ByteTokenizer, TinyGPTModern
 
 
-# --- device selection (MPS-first) ---
 def pick_device():
     if torch.backends.mps.is_available():
         return torch.device("mps"), "mps"
@@ -28,12 +27,14 @@ def pick_device():
 
 
 def amp_autocast(device_str: str):
-    # float16 on mps is the practical sweet spot; bf16 elsewhere
     dtype = torch.float16 if device_str == "mps" else torch.bfloat16
     return torch.autocast(device_type=device_str, dtype=dtype)
 
 
-# --- tiny data pipeline (unchanged) ---
+# data helpers (unchanged) ...
+# from datasets import load_dataset if False else None  # placate linters
+
+
 def _iter_hf(name: str) -> Iterable[str]:
     from datasets import load_dataset
 
@@ -98,18 +99,12 @@ def stream_docs(
 def pack_stream(
     tok: ByteTokenizer, it: Iterable[str], seq_len: int, batch_size: int, device
 ) -> Iterable[Tuple[torch.Tensor, torch.Tensor]]:
-    """
-    Packs documents into fixed-length batches for next-token LM training.
-    For each batch, we need B*(T+1) tokens so that x has shape [B,T] and y is x shifted by 1.
-    """
-    sep = [10]  # newline
-    toks: list[int] = []
+    sep = [10]
+    toks = []
     need = batch_size * (seq_len + 1)
-
     for doc in it:
         toks.extend(tok.encode(doc).tolist())
         toks.extend(sep)
-
         while len(toks) >= need:
             arr = toks[:need]
             toks = toks[need:]
@@ -117,18 +112,14 @@ def pack_stream(
             x = buf[:, :-1].contiguous().to(device)
             y = buf[:, 1:].contiguous().to(device)
             yield x, y
-
-    # Optional tail pad (kept identical to your working version)
     if 0 < len(toks) < need:
-        pad_len = need - len(toks)
-        toks.extend([0] * pad_len)
+        toks.extend([0] * (need - len(toks)))
         buf = torch.tensor(toks[:need], dtype=torch.long).view(batch_size, seq_len + 1)
         x = buf[:, :-1].contiguous().to(device)
         y = buf[:, 1:].contiguous().to(device)
         yield x, y
 
 
-# --- eval perplexity (unchanged math) ---
 @torch.no_grad()
 def eval_ppl(
     model: nn.Module, it: Iterable[Tuple[torch.Tensor, torch.Tensor]], steps: int, device_str: str
@@ -156,11 +147,8 @@ def cosine_lr(step, total, base_lr, min_lr=1e-5, warmup=0):
     return min_lr + 0.5 * (base_lr - min_lr) * (1 + math.cos(math.pi * t))
 
 
-# --- tiny helpers for telemetry (no training behavior changes) ---
 def count_params(model: nn.Module, trainable_only: bool = True) -> int:
-    if trainable_only:
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)
-    return sum(p.numel() for p in model.parameters())
+    return sum(p.numel() for p in model.parameters() if (p.requires_grad or not trainable_only))
 
 
 def human(n: float) -> str:
@@ -183,6 +171,14 @@ def bytes_approx(params: int, dtype_bytes: int = 2) -> str:
         b /= 1024
 
 
+def fmt_hms(seconds: float) -> str:
+    s = int(seconds)
+    h = s // 3600
+    m = (s % 3600) // 60
+    s = s % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -201,18 +197,35 @@ def main():
     ap.add_argument("--heads", type=int, default=8)
     ap.add_argument("--kv-heads", type=int, default=2)
     ap.add_argument("--ffn-mult", type=float, default=8 / 3)
+    ap.add_argument(
+        "--ffn-type",
+        type=str,
+        default="swiglu",
+        choices=["swiglu", "gelu_mlp", "geglu", "reglu", "conv_glu", "moe"],
+    )
+    ap.add_argument("--conv-kernel", type=int, default=5)
+    ap.add_argument("--conv-dilation", type=int, default=1)
+    ap.add_argument("--moe-experts", type=int, default=4)
     ap.add_argument("--dropout", type=float, default=0.0)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--wd", type=float, default=0.1)
     ap.add_argument("--warmup", type=int, default=200)
     ap.add_argument("--eval-every", type=int, default=200)
+    ap.add_argument(
+        "--eval-steps", type=int, default=8, help="number of eval batches per eval call"
+    )
+    ap.add_argument(
+        "--skip-eval", action="store_true", help="disable periodic eval to maximize throughput"
+    )
+    ap.add_argument(
+        "--log-every", type=int, default=20, help="training log frequency (optimizer steps)"
+    )
     ap.add_argument("--save-every", type=int, default=500)
     ap.add_argument("--ckpt-dir", type=str, default="ckpts_tinygpt")
     ap.add_argument("--min-chars", type=int, default=200)
     ap.add_argument("--max-chars", type=int, default=5000)
     ap.add_argument("--min-ascii", type=float, default=0.5)
     ap.add_argument("--seed", type=int, default=42)
-    # Telemetry-only extras
     ap.add_argument(
         "--target-tokens",
         type=float,
@@ -226,7 +239,7 @@ def main():
     random.seed(args.seed)
     device, dev_str = pick_device()
 
-    # data (unchanged)
+    # data
     if args.text_file:
         src = _iter_file(args.text_file)
         data_label = f"file:{os.path.basename(args.text_file)}"
@@ -239,7 +252,7 @@ def main():
     tok = ByteTokenizer()
     train_iter = pack_stream(tok, stream, seq_len=args.seq, batch_size=args.batch, device=device)
 
-    def make_eval_iter(n_batches=8):
+    def make_eval_iter():
         if args.text_file:
             src2 = _iter_file(args.text_file)
         else:
@@ -249,7 +262,7 @@ def main():
         )
         return pack_stream(tok, s2, seq_len=args.seq, batch_size=args.batch, device=device)
 
-    # model (unchanged)
+    # model
     model = TinyGPTModern(
         vocab_size=tok.vocab_size,
         d_model=args.d_model,
@@ -258,20 +271,24 @@ def main():
         n_kv_heads=args.kv_heads,
         ffn_mult=args.ffn_mult,
         dropout=args.dropout,
+        ffn_type=args.ffn_type,
+        conv_kernel=args.conv_kernel,
+        conv_dilation=args.conv_dilation,
+        moe_experts=args.moe_experts,
     ).to(device)
 
-    # optim (unchanged)
+    # optim
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd, betas=(0.9, 0.95))
     os.makedirs(args.ckpt_dir, exist_ok=True)
 
-    # ---------- Telemetry header ----------
+    # telemetry header
     n_trainable = count_params(model, trainable_only=True)
     n_total = count_params(model, trainable_only=False)
     compute_optimal_tokens = args.target_tokens if args.target_tokens > 0 else 20.0 * n_total
     tokens_per_update = args.batch * args.seq * args.grad_accum
     planned_tokens = tokens_per_update * args.steps
     weights_mem_fp16 = bytes_approx(n_total, 2)
-    opt_states_mem = bytes_approx(n_total * 12)  # AdamW m+v (fp32) + grads (fp16) ≈ 12 bytes/param
+    opt_states_mem = bytes_approx(n_total * 12)
 
     header = {
         "device": dev_str,
@@ -281,7 +298,11 @@ def main():
         "layers": args.layers,
         "heads": args.heads,
         "kv_heads": args.kv_heads,
+        "ffn_type": args.ffn_type,
         "ffn_mult": args.ffn_mult,
+        "conv_kernel": args.conv_kernel,
+        "conv_dilation": args.conv_dilation,
+        "moe_experts": args.moe_experts,
         "seq": args.seq,
         "batch": args.batch,
         "grad_accum": args.grad_accum,
@@ -302,7 +323,12 @@ def main():
     print(f" Device:            {dev_str}")
     print(f" Data:              {data_label}")
     print(
-        f" Model:             d_model={args.d_model} | L={args.layers} | heads={args.heads}/{args.kv_heads} (Q/KV) | ffn_mult={args.ffn_mult}"
+        f" Model:             d_model={args.d_model} | L={args.layers} | heads={args.heads}/{args.kv_heads} (Q/KV)"
+    )
+    print(
+        f" FFN:               type={args.ffn_type} | mult={args.ffn_mult} "
+        f"{'(k='+str(args.conv_kernel)+',d='+str(args.conv_dilation)+')' if args.ffn_type=='conv_glu' else ''}"
+        f"{'(experts='+str(args.moe_experts)+')' if args.ffn_type=='moe' else ''}"
     )
     print(f" Params:            {human(n_total)} (trainable {human(n_trainable)})")
     print(f" Weights (fp16):    ~{weights_mem_fp16} | Optimizer states est: ~{opt_states_mem}")
@@ -314,34 +340,59 @@ def main():
         f" Target tokens:     {human(compute_optimal_tokens)} (≈20× params)  | Planned/Target = {planned_tokens/compute_optimal_tokens:.2%}\n"
     )
 
-    # Metrics CSV
+    # metrics CSV (elapsed_sec)
     csv_path = os.path.join(args.ckpt_dir, args.metrics_csv)
     csv_new = not os.path.exists(csv_path)
     if csv_new:
         with open(csv_path, "w", newline="") as cf:
-            writer = csv.writer(cf)
-            writer.writerow(
-                ["step", "lr", "loss_ma", "ppl", "tok_per_sec", "tokens_cum", "planned_vs_target"]
+            csv.writer(cf).writerow(
+                [
+                    "step",
+                    "lr",
+                    "loss_ma",
+                    "ppl",
+                    "tok_per_sec",
+                    "tokens_cum",
+                    "planned_vs_target",
+                    "elapsed_sec",
+                ]
             )
 
-    # ---------- Training loop (unchanged math) ----------
+    # train
     model.train()
     accum = 0
     running = 0.0
-    loss_window = []  # for moving average display only
+    loss_window = []
     tokens_cum = 0
     t0 = time.time()
+    t_start = time.time()
+
+    def write_csv_row(step, lr, loss_ma, ppl_str, tok_per_sec, tokens_cum, planned_vs_target):
+        elapsed_sec = time.time() - t_start
+        with open(csv_path, "a", newline="") as cf:
+            csv.writer(cf).writerow(
+                [
+                    step,
+                    lr,
+                    f"{loss_ma:.6f}",
+                    ppl_str,
+                    tok_per_sec,
+                    tokens_cum,
+                    f"{planned_vs_target:.6f}",
+                    f"{elapsed_sec:.2f}",
+                ]
+            )
 
     for step in range(1, args.steps + 1):
         x, y = next(train_iter)
         with amp_autocast(dev_str):
             logits, _ = model(x)
-            loss = F.cross_entropy(logits.view(-1, tok.vocab_size), y.view(-1))
+            loss = F.cross_entropy(logits.view(-1, model.vocab_size), y.view(-1))
 
         (loss / args.grad_accum).backward()
         running += loss.item()
         loss_window.append(loss.item())
-        if len(loss_window) > 50:  # MA over last 50 minibatches
+        if len(loss_window) > 50:
             loss_window.pop(0)
         accum += 1
 
@@ -354,67 +405,51 @@ def main():
             opt.zero_grad(set_to_none=True)
             accum = 0
 
-            # Throughput + telemetry every 20 optimizer steps
-            if step % 20 == 0 or step == 1:
+            if step % args.log_every == 0 or step == 1:
                 dt = time.time() - t0
-                tok_per_sec = 0 if step == 1 else int(tokens_per_update * 20 / max(1e-6, dt))
-                tokens_cum += tokens_per_update * (1 if step == 1 else 20)
+                tok_per_sec = (
+                    0 if step == 1 else int(tokens_per_update * args.log_every / max(1e-6, dt))
+                )
+                tokens_cum += tokens_per_update * (1 if step == 1 else args.log_every)
                 loss_ma = sum(loss_window) / max(1, len(loss_window))
                 planned_vs_target = tokens_cum / compute_optimal_tokens
+                elapsed_hms = fmt_hms(time.time() - t_start)
                 print(
-                    f"step {step:5d} | loss(ma) {loss_ma:.3f} | lr {lr:.2e} | ~{tok_per_sec:,} tok/s | tokens {tokens_cum:,} ({planned_vs_target:.2%} of target)"
+                    f"step {step:5d} | loss(ma) {loss_ma:.3f} | lr {lr:.2e} | ~{tok_per_sec:,} tok/s | tokens {tokens_cum:,} ({planned_vs_target:.2%} of target) | elapsed {elapsed_hms}"
                 )
-                # append to CSV
-                with open(csv_path, "a", newline="") as cf:
-                    writer = csv.writer(cf)
-                    writer.writerow(
-                        [
-                            step,
-                            lr,
-                            f"{loss_ma:.6f}",
-                            "",
-                            tok_per_sec,
-                            tokens_cum,
-                            f"{planned_vs_target:.6f}",
-                        ]
-                    )
+                write_csv_row(step, lr, loss_ma, "", tok_per_sec, tokens_cum, planned_vs_target)
                 t0 = time.time()
-                running = 0.0  # keep your original running reset semantics
+                running = 0.0
 
-        # eval (unchanged math)
-        if step % args.eval_every == 0 or step == args.steps:
-            ppl = eval_ppl(model, make_eval_iter(), steps=8, device_str=dev_str)
+        if not args.skip_eval and (step % args.eval_every == 0 or step == args.steps):
+            ppl = eval_ppl(model, make_eval_iter(), steps=args.eval_steps, device_str=dev_str)
             loss_ma = sum(loss_window) / max(1, len(loss_window))
-            print(f"[eval] step {step} | perplexity {ppl:.2f}")
-            # append eval row to CSV
-            with open(csv_path, "a", newline="") as cf:
-                writer = csv.writer(cf)
-                writer.writerow(
-                    [
-                        step,
-                        lr,
-                        f"{loss_ma:.6f}",
-                        f"{ppl:.4f}",
-                        "",
-                        tokens_cum,
-                        f"{(tokens_cum/compute_optimal_tokens):.6f}",
-                    ]
-                )
+            elapsed_hms = fmt_hms(time.time() - t_start)
+            print(f"[eval] step {step} | perplexity {ppl:.2f} | elapsed {elapsed_hms}")
+            write_csv_row(
+                step,
+                lr,
+                loss_ma,
+                f"{ppl:.4f}",
+                "",
+                tokens_cum,
+                (tokens_cum / compute_optimal_tokens),
+            )
 
-        # checkpoint (unchanged)
         if step % args.save_every == 0 or step == args.steps:
             path = os.path.join(args.ckpt_dir, f"tinygpt_step{step}.pt")
             torch.save({"model": model.state_dict(), "cfg": vars(args), "step": step}, path)
             print(f"[ckpt] saved {path}")
 
-    # quick sample (unchanged)
+    total_elapsed = time.time() - t_start
+    print(f"\n=== TRAINING DONE — elapsed {fmt_hms(total_elapsed)} ({total_elapsed:.2f}s) ===")
+
     model.eval()
     prompt = "Transformers attend to what matters.\n"
     ids = ByteTokenizer.encode(prompt).unsqueeze(0).to(device)
     with torch.no_grad():
         out = model.generate(ids, max_new_tokens=200, temperature=0.9, top_k=50)
-    text = ByteTokenizer.decode(out[0].cpu())
-    print("\n=== SAMPLE ===\n", text, "\n==============")
+    print("\n=== SAMPLE ===\n", ByteTokenizer.decode(out[0].cpu()), "\n==============")
 
 
 if __name__ == "__main__":
