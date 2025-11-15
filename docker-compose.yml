@@ -4,7 +4,7 @@ services:
   ai-server:
     build:
       context: .
-      dockerfile: servers/fastapi_lora/Dockerfile
+      dockerfile: servers/applied_ai/Dockerfile
     image: the-ai-repo/ai-server:local
     container_name: ai-server
     ports:

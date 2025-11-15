@@ -33,10 +33,10 @@ ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:${PATH}"
 
 # Copy the FastAPI app (if you keep it outside src/)
-COPY servers/fastapi_lora/app.py ./servers/fastapi_lora/app.py
+COPY servers/applied_ai/app.py ./servers/applied_ai/app.py
 
 # HF cache directory
 RUN mkdir -p ${HF_HOME}
 
 EXPOSE 8000
-CMD ["uvicorn", "servers.fastapi_lora.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "servers.applied_ai.app:app", "--host", "0.0.0.0", "--port", "8000"]

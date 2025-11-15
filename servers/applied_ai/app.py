@@ -7,6 +7,9 @@ from typing import Any, Dict, List, Optional
 
 import torch
 from fastapi import FastAPI, HTTPException
+
+# ✨ NEW: CORS
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -26,11 +29,29 @@ SYSTEM_PROMPT = os.getenv(
 )
 MAX_NEW_TOKENS_DEFAULT = int(os.getenv("MAX_NEW_TOKENS", "160"))
 TEMPERATURE_DEFAULT = float(os.getenv("TEMPERATURE", "0.2"))
-
-# CPU container default; running natively on mac can use device="mps"
-DEVICE = os.getenv("DEVICE", "cpu")
+DEVICE = os.getenv("DEVICE", "cpu")  # cpu | mps | cuda
 
 app = FastAPI(title="Qwen-LoRA FastAPI", version="0.1.0")
+
+# ✨ NEW: CORS (allow local dev & prod SPA by default; override via CORS_ORIGINS)
+_default_cors = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://host.docker.internal:5173",
+    "http://host.docker.internal:8080",
+]
+_cors_env = os.getenv("CORS_ORIGINS")  # comma-separated list
+_cors_list = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_cors
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_list,
+    allow_credentials=False,  # set True only if you use cookies/auth headers
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 _model = None
 _tok = None
 _lock = asyncio.Lock()  # simple concurrency guard
@@ -54,7 +75,6 @@ def _load_base_plus_lora(model_id: str, lora_dir: str):
 
 def build_chatml_prompt(tok, system: str, user: str) -> str:
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    # Qwen chat template → prefill prompt for assistant
     return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
 
@@ -77,20 +97,17 @@ def generate_once(model, tok, prompt: str, max_new_tokens: int, temperature: flo
             eos_token_id=tok.eos_token_id,
         )
     text = tok.decode(out[0], skip_special_tokens=True)
-    # extract assistant turn (template already includes assistant prefill)
     return text.split("</s>")[-1].strip() if "</s>" in text else text.strip()
 
 
 @app.on_event("startup")
 def startup_event():
     global _model, _tok
-    # Try base+adapters first if provided; else assume merged or pure base in MODEL_ID
     if LORA_ADAPTERS_DIR:
         _model, _tok = _load_base_plus_lora(MODEL_ID, LORA_ADAPTERS_DIR)
     else:
         _model, _tok = _load_base(MODEL_ID)
     _model.to(DEVICE).eval()
-    # tiny warmup
     _ = _tok("hi", return_tensors="pt")
 
 
@@ -140,7 +157,6 @@ async def chat_completions(req: OpenAIChatRequest) -> Dict[str, Any]:
     if _model is None or _tok is None:
         raise HTTPException(503, "model not loaded")
 
-    # Build ChatML from OpenAI-style messages
     sys = SYSTEM_PROMPT
     usr_parts = []
     for m in req.messages:
@@ -161,7 +177,6 @@ async def chat_completions(req: OpenAIChatRequest) -> Dict[str, Any]:
             int(req.max_tokens or MAX_NEW_TOKENS_DEFAULT),
             float(req.temperature or TEMPERATURE_DEFAULT),
         )
-    # minimal OpenAI-compatible response
     return {
         "id": "chatcmpl-local",
         "object": "chat.completion",
