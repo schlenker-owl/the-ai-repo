@@ -31,9 +31,7 @@ def main():
         tok.pad_token = tok.eos_token
     tok.padding_side = "left"
 
-    model = (
-        AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32).to(dev).eval()
-    )
+    model = AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev).eval()
 
     if args.adapters:
         assert _HAS_PEFT, "peft not installed"

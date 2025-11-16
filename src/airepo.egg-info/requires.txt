@@ -10,6 +10,7 @@ omegaconf>=2.3.0
 open-clip-torch>=3.2.0
 pip>=25.3
 pydantic>=2.12.3
+python-multipart>=0.0.20
 rich>=14.2.0
 torch>=2.9.0
 torchaudio>=2.9.0

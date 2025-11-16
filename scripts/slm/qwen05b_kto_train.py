@@ -183,7 +183,7 @@ def main() -> None:
     try:
         model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32)
     except TypeError:
-        model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float32)
+        model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32)
     model.to(dev)
 
     # Apply LoRA/DoRA

@@ -134,7 +134,7 @@ def main() -> None:
     try:
         model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32)
     except TypeError:
-        model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float32)
+        model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32)
     model.to(dev)
 
     # reference (teacher) for KL
@@ -143,9 +143,7 @@ def main() -> None:
         try:
             ref_model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32).to(dev)
         except TypeError:
-            ref_model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float32).to(
-                dev
-            )
+            ref_model = AutoModelForCausalLM.from_pretrained(base, dtype=torch.float32).to(dev)
         ref_model.eval()
         for p in ref_model.parameters():
             p.requires_grad = False

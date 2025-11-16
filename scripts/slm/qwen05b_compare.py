@@ -163,23 +163,17 @@ def main():
     tok.padding_side = "left"
 
     # Load BASE model
-    base_m = (
-        AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32).to(dev).eval()
-    )
+    base_m = AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev).eval()
 
     # Load TUNED model: adapters > merged > base (fallback)
     if args.adapters:
         assert _HAS_PEFT, "peft is not installed; cannot load adapters"
-        tuned_base = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32).to(
-            dev
-        )
+        tuned_base = AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev)
         tuned_m = PeftModel.from_pretrained(tuned_base, args.adapters).eval()
         tuned_label = f"{args.base} + adapters:{Path(args.adapters).name}"
     elif args.tuned:
         tuned_m = (
-            AutoModelForCausalLM.from_pretrained(args.tuned, torch_dtype=torch.float32)
-            .to(dev)
-            .eval()
+            AutoModelForCausalLM.from_pretrained(args.tuned, dtype=torch.float32).to(dev).eval()
         )
         tuned_label = f"merged:{Path(args.tuned).name}"
     else:

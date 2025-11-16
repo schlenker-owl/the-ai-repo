@@ -18,6 +18,7 @@ Requires-Dist: omegaconf>=2.3.0
 Requires-Dist: open-clip-torch>=3.2.0
 Requires-Dist: pip>=25.3
 Requires-Dist: pydantic>=2.12.3
+Requires-Dist: python-multipart>=0.0.20
 Requires-Dist: rich>=14.2.0
 Requires-Dist: torch>=2.9.0
 Requires-Dist: torchaudio>=2.9.0

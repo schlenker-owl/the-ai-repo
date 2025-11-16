@@ -108,11 +108,7 @@ def main():
 
     model = None
     if args.neg in ("gen_base", "gen_adapters"):
-        model = (
-            AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32)
-            .to(dev)
-            .eval()
-        )
+        model = AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev).eval()
         if args.neg == "gen_adapters":
             assert _HAS_PEFT, "peft not installed for gen_adapters"
             model = PeftModel.from_pretrained(model, args.adapters).eval()

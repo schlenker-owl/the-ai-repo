@@ -1,8 +1,8 @@
 # Shared utilities for all domains. Explicit re-exports for a clean public API.
 
+from .device import dtype as dtype
 from .device import pick_device as pick_device
 from .device import seed_everything as seed_everything
-from .device import torch_dtype as torch_dtype
 from .io import ensure_dir as ensure_dir
 from .io import load_json as load_json
 from .io import load_yaml as load_yaml
@@ -18,7 +18,7 @@ from .timers import timed as timed
 __all__ = [
     "pick_device",
     "seed_everything",
-    "torch_dtype",
+    "dtype",
     "ensure_dir",
     "load_json",
     "load_yaml",

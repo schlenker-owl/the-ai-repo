@@ -51,9 +51,9 @@ def main():
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
-    base_m = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32).to(dev)
+    base_m = AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev)
     tuned = PeftModel.from_pretrained(
-        AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32).to(dev),
+        AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev),
         args.adapters,
     )
 

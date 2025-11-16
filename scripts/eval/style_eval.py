@@ -117,22 +117,16 @@ def main():
         tok.pad_token = tok.eos_token
     tok.padding_side = "left"
 
-    base_m = (
-        AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32).to(dev).eval()
-    )
+    base_m = AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev).eval()
     if args.adapters:
         assert _HAS_PEFT, "peft not installed"
         tuned = PeftModel.from_pretrained(
-            AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32).to(dev),
+            AutoModelForCausalLM.from_pretrained(args.base, dtype=torch.float32).to(dev),
             args.adapters,
         ).eval()
         tuned_label = f"{args.base}+adapters:{Path(args.adapters).name}"
     elif args.tuned:
-        tuned = (
-            AutoModelForCausalLM.from_pretrained(args.tuned, torch_dtype=torch.float32)
-            .to(dev)
-            .eval()
-        )
+        tuned = AutoModelForCausalLM.from_pretrained(args.tuned, dtype=torch.float32).to(dev).eval()
         tuned_label = f"merged:{Path(args.tuned).name}"
     else:
         tuned = base_m

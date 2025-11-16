@@ -39,7 +39,7 @@ def seed_everything(seed: int = 42) -> None:
     # torch >=2 uses deterministic algorithms when configured; we keep it fast by default.
 
 
-def torch_dtype(name: str = "float32") -> torch.dtype:
+def dtype(name: str = "float32") -> torch.dtype:
     """
     Map simple strings to torch dtypes. (CPU-safe; fp16 only if non-CPU)
     """
