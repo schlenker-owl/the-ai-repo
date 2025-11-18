@@ -1,15 +1,17 @@
 # path: servers/applied_ai/app.py
+# ---
 #!/usr/bin/env python
 from __future__ import annotations
 
 import asyncio
+import base64
+import mimetypes
 import os
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional
 
 import torch
-from fastapi import FastAPI, HTTPException
-
-# ✨ CORS
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -43,12 +45,12 @@ _default_cors = [
     "http://host.docker.internal:5173",
     "http://host.docker.internal:8080",
 ]
-_cors_env = os.getenv("CORS_ORIGINS")  # comma-separated list
+_cors_env = os.getenv("CORS_ORIGINS")
 _cors_list = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_cors
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_list,
-    allow_credentials=False,  # set True only if you use cookies/auth headers
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -58,11 +60,51 @@ _tok = None
 _lock = asyncio.Lock()  # simple concurrency guard
 
 
+# -------- filesystem helpers (outputs/) ----------
+
+
+def get_outputs_root() -> Path:
+    """
+    Resolve the root for all artifacts.
+
+    Priority:
+      1) OUTPUTS_ROOT env (absolute or relative)
+      2) /app/outputs (container default)
+      3) ./outputs (local dev from repo root)
+    """
+    env = os.getenv("OUTPUTS_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+
+    candidates = [Path("/app/outputs"), Path("outputs")]
+    for c in candidates:
+        if c.exists():
+            return c.resolve()
+    # fallback even if not present yet
+    return candidates[0].resolve()
+
+
+def _safe_join(root: Path, rel: str) -> Path:
+    """
+    Join a user-provided relative path to root, preventing path traversal.
+    """
+    if rel.startswith(("/", "\\")):
+        raise HTTPException(400, detail="absolute paths are not allowed")
+    candidate = (root / rel).resolve()
+    root = root.resolve()
+    if candidate == root or root in candidate.parents:
+        return candidate
+    raise HTTPException(400, detail="invalid path")
+
+
+# -------- model loading & generation ----------
+
+
 def _load_base(model_id: str):
     tok = AutoTokenizer.from_pretrained(model_id, use_fast=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-    model = AutoModelForCausalLM.from_pretrained(model_id, dtype=torch.float32)
+    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.float32)
     return model, tok
 
 
@@ -117,6 +159,8 @@ def startup_event():
 
 
 # -------- schemas ----------
+
+
 class ChatRequest(BaseModel):
     user: str = Field(..., description="User message content")
     system: Optional[str] = Field(None, description="Optional system override")
@@ -148,7 +192,28 @@ class MetaResponse(BaseModel):
     server_version: str
 
 
+class ArtifactItem(BaseModel):
+    name: str
+    path: str  # relative to outputs root
+    type: Literal["dir", "file"]
+
+
+class ArtifactListResponse(BaseModel):
+    items: List[ArtifactItem]
+
+
+class ArtifactFileResponse(BaseModel):
+    content: str
+
+
+class CVArtifactPreview(BaseModel):
+    kind: Literal["text", "image", "bin"]
+    content: str
+
+
 # -------- health & meta ----------
+
+
 @app.get("/healthz")
 async def healthz() -> Dict[str, str]:
     """
@@ -187,6 +252,8 @@ async def meta() -> MetaResponse:
 
 
 # -------- chat endpoints ----------
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest) -> Dict[str, Any]:
     global _model, _tok
@@ -241,3 +308,125 @@ async def chat_completions(req: OpenAIChatRequest) -> Dict[str, Any]:
         ],
         "usage": {},
     }
+
+
+# -------- generic artifacts API (/artifacts/*) ----------
+
+
+@app.get("/artifacts/list", response_model=ArtifactListResponse)
+async def list_artifacts(
+    path: Optional[str] = Query(
+        default=None,
+        description="Optional relative subdirectory under outputs/ to list. If omitted, list top-level.",
+    )
+) -> ArtifactListResponse:
+    root = get_outputs_root()
+    base = root if not path else _safe_join(root, path)
+
+    if not base.exists() or not base.is_dir():
+        return ArtifactListResponse(items=[])
+
+    items: List[ArtifactItem] = []
+    for entry in sorted(base.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+        typ: Literal["dir", "file"] = "dir" if entry.is_dir() else "file"
+        rel_path = entry.relative_to(root).as_posix()
+        items.append(ArtifactItem(name=entry.name, path=rel_path, type=typ))
+
+    return ArtifactListResponse(items=items)
+
+
+@app.get("/artifacts/file", response_model=ArtifactFileResponse)
+async def read_artifact(
+    path: str = Query(..., description="Relative file path under outputs/"),
+) -> ArtifactFileResponse:
+    root = get_outputs_root()
+    full = _safe_join(root, path)
+
+    if not full.exists() or not full.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+
+    try:
+        text = full.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        # Fallback: binary or non-UTF8; just show a small hint.
+        stat = full.stat()
+        text = f"[binary file] {full.name} ({stat.st_size} bytes)"
+
+    return ArtifactFileResponse(content=text)
+
+
+# -------- CV artifacts API (/cv/*) ----------
+
+
+def _collect_cv_files(root: Path, max_items: int = 512) -> List[Path]:
+    """
+    Scan outputs/cv and outputs/cv_images for interesting artifacts.
+
+    We include:
+      - annotated images (*.png/jpg/jpeg/webp)
+      - JSON/CSV summaries and detections
+      - logs
+    """
+    img_exts = {".png", ".jpg", ".jpeg", ".webp"}
+    text_exts = {".json", ".csv", ".log", ".txt"}
+    interesting_exts = img_exts | text_exts
+
+    out: List[Path] = []
+    for base in (root / "cv", root / "cv_images"):
+        if not base.exists():
+            continue
+        for p in sorted(base.rglob("*")):
+            if not p.is_file():
+                continue
+            if p.suffix.lower() in interesting_exts:
+                out.append(p)
+                if len(out) >= max_items:
+                    return out
+    return out
+
+
+@app.get("/cv/artifacts", response_model=ArtifactListResponse)
+async def list_cv_artifacts() -> ArtifactListResponse:
+    """
+    List a flattened set of "interesting" CV artifacts under outputs/cv and outputs/cv_images.
+    """
+    root = get_outputs_root()
+    files = _collect_cv_files(root)
+    items: List[ArtifactItem] = []
+    for f in files:
+        rel = f.relative_to(root).as_posix()
+        items.append(ArtifactItem(name=f.name, path=rel, type="file"))
+    return ArtifactListResponse(items=items)
+
+
+@app.get("/cv/artifact", response_model=CVArtifactPreview)
+async def cv_artifact(
+    path: str = Query(..., description="Relative file path under outputs/ for CV artifact"),
+) -> CVArtifactPreview:
+    root = get_outputs_root()
+    full = _safe_join(root, path)
+
+    if not full.exists() or not full.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+
+    suffix = full.suffix.lower()
+    img_exts = {".png", ".jpg", ".jpeg", ".webp"}
+    text_exts = {".json", ".csv", ".log", ".txt"}
+
+    if suffix in img_exts:
+        mime, _ = mimetypes.guess_type(full.name)
+        if mime is None:
+            mime = "image/png"
+        data = full.read_bytes()
+        b64 = base64.b64encode(data).decode("ascii")
+        data_url = f"data:{mime};base64,{b64}"
+        return CVArtifactPreview(kind="image", content=data_url)
+
+    if suffix in text_exts:
+        text = full.read_text(encoding="utf-8", errors="replace")
+        return CVArtifactPreview(kind="text", content=text)
+
+    # Fallback for other binary blobs (e.g., mp4)
+    stat = full.stat()
+    msg = f"[binary file] {full.name} ({stat.st_size} bytes)"
+    return CVArtifactPreview(kind="bin", content=msg)
