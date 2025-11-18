@@ -7,13 +7,14 @@ import asyncio
 import base64
 import mimetypes
 import os
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 try:
@@ -23,20 +24,19 @@ try:
 except Exception:
     _HAS_PEFT = False
 
-# -------- settings via env ----------
+# =====================================================================
+# CONFIGURATION
+# =====================================================================
+
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen2.5-0.5B-Instruct")
-LORA_ADAPTERS_DIR = os.getenv("LORA_ADAPTERS_DIR", "")  # if empty -> use merged or pure base
-SYSTEM_PROMPT = os.getenv(
-    "SYSTEM_PROMPT",
-    "You are a compassionate, practical spiritual coach. Be concise, kind, and useful.",
-)
+LORA_ADAPTERS_DIR = os.getenv("LORA_ADAPTERS_DIR", "")
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a compassionate coach.")
 MAX_NEW_TOKENS_DEFAULT = int(os.getenv("MAX_NEW_TOKENS", "160"))
 TEMPERATURE_DEFAULT = float(os.getenv("TEMPERATURE", "0.2"))
-DEVICE = os.getenv("DEVICE", "cpu")  # cpu | mps | cuda
+DEVICE = os.getenv("DEVICE", "cpu")
 
-app = FastAPI(title="Qwen-LoRA FastAPI", version="0.1.0")
+app = FastAPI(title="Applied AI Server", version="0.2.0")
 
-# ✨ CORS (allow local dev & prod SPA by default; override via CORS_ORIGINS)
 _default_cors = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -55,49 +55,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_model = None
-_tok = None
-_lock = asyncio.Lock()  # simple concurrency guard
-
-
-# -------- filesystem helpers (outputs/) ----------
+# =====================================================================
+# UTILITIES — OUTPUTS ROOT & SAFE JOIN
+# =====================================================================
 
 
 def get_outputs_root() -> Path:
-    """
-    Resolve the root for all artifacts.
-
-    Priority:
-      1) OUTPUTS_ROOT env (absolute or relative)
-      2) /app/outputs (container default)
-      3) ./outputs (local dev from repo root)
-    """
     env = os.getenv("OUTPUTS_ROOT")
     if env:
         return Path(env).expanduser().resolve()
 
-    candidates = [Path("/app/outputs"), Path("outputs")]
-    for c in candidates:
+    cands = [Path("/app/outputs"), Path("outputs")]
+    for c in cands:
         if c.exists():
             return c.resolve()
-    # fallback even if not present yet
-    return candidates[0].resolve()
+    return cands[0].resolve()
 
 
 def _safe_join(root: Path, rel: str) -> Path:
-    """
-    Join a user-provided relative path to root, preventing path traversal.
-    """
     if rel.startswith(("/", "\\")):
-        raise HTTPException(400, detail="absolute paths are not allowed")
-    candidate = (root / rel).resolve()
+        raise HTTPException(400, "absolute paths not allowed")
+    p = (root / rel).resolve()
     root = root.resolve()
-    if candidate == root or root in candidate.parents:
-        return candidate
-    raise HTTPException(400, detail="invalid path")
+    if p == root or root in p.parents:
+        return p
+    raise HTTPException(400, "invalid path")
 
 
-# -------- model loading & generation ----------
+# =====================================================================
+# MODEL LOADING
+# =====================================================================
+
+_model = None
+_tok = None
+_lock = asyncio.Lock()
 
 
 def _load_base(model_id: str):
@@ -110,28 +101,28 @@ def _load_base(model_id: str):
 
 def _load_base_plus_lora(model_id: str, lora_dir: str):
     if not _HAS_PEFT:
-        raise RuntimeError("peft not installed; cannot load LoRA adapters")
+        raise RuntimeError("peft not installed")
     model, tok = _load_base(model_id)
     model = PeftModel.from_pretrained(model, lora_dir)
     return model, tok
 
 
 def build_chatml_prompt(tok, system: str, user: str) -> str:
-    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
 
 
 def generate_once(model, tok, prompt: str, max_new_tokens: int, temperature: float) -> str:
     enc = tok(prompt, return_tensors="pt")
-    input_ids = enc["input_ids"].to(DEVICE)
-    attn = enc.get("attention_mask", None)
-    if attn is not None:
-        attn = attn.to(DEVICE)
+    inp = enc["input_ids"].to(DEVICE)
+    att = enc.get("attention_mask", None)
+    if att is not None:
+        att = att.to(DEVICE)
 
     with torch.no_grad():
         out = model.generate(
-            input_ids=input_ids,
-            attention_mask=attn,
+            input_ids=inp,
+            attention_mask=att,
             max_new_tokens=max_new_tokens,
             do_sample=(temperature > 0.0),
             temperature=temperature,
@@ -139,8 +130,9 @@ def generate_once(model, tok, prompt: str, max_new_tokens: int, temperature: flo
             pad_token_id=tok.pad_token_id,
             eos_token_id=tok.eos_token_id,
         )
-    text = tok.decode(out[0], skip_special_tokens=True)
-    return text.split("</s>")[-1].strip() if "</s>" in text else text.strip()
+
+    txt = tok.decode(out[0], skip_special_tokens=True)
+    return txt.split("</s>")[-1].strip() if "</s>" in txt else txt.strip()
 
 
 def _is_ready() -> bool:
@@ -158,14 +150,16 @@ def startup_event():
     _ = _tok("hi", return_tensors="pt")
 
 
-# -------- schemas ----------
+# =====================================================================
+# SCHEMAS
+# =====================================================================
 
 
 class ChatRequest(BaseModel):
-    user: str = Field(..., description="User message content")
-    system: Optional[str] = Field(None, description="Optional system override")
-    max_new_tokens: Optional[int] = Field(None, ge=1, le=2048)
-    temperature: Optional[float] = Field(None, ge=0.0, le=1.5)
+    user: str
+    system: Optional[str]
+    max_new_tokens: Optional[int]
+    temperature: Optional[float]
 
 
 class OpenAIMessage(BaseModel):
@@ -174,10 +168,10 @@ class OpenAIMessage(BaseModel):
 
 
 class OpenAIChatRequest(BaseModel):
-    model: Optional[str] = None
+    model: Optional[str]
     messages: List[OpenAIMessage]
-    temperature: Optional[float] = 0.2
-    max_tokens: Optional[int] = 160
+    temperature: Optional[float]
+    max_tokens: Optional[int]
 
 
 class MetaResponse(BaseModel):
@@ -194,7 +188,7 @@ class MetaResponse(BaseModel):
 
 class ArtifactItem(BaseModel):
     name: str
-    path: str  # relative to outputs root
+    path: str
     type: Literal["dir", "file"]
 
 
@@ -211,33 +205,25 @@ class CVArtifactPreview(BaseModel):
     content: str
 
 
-# -------- health & meta ----------
+# =====================================================================
+# HEALTH / META
+# =====================================================================
 
 
 @app.get("/healthz")
-async def healthz() -> Dict[str, str]:
-    """
-    Liveness probe: if this returns 200, the process is up.
-    Does not imply the model is loaded.
-    """
+def healthz():
     return {"status": "ok"}
 
 
 @app.get("/readyz")
-async def readyz() -> Dict[str, str]:
-    """
-    Readiness probe: only 200 once the model & tokenizer are loaded.
-    """
+def readyz():
     if not _is_ready():
-        raise HTTPException(status_code=503, detail="model not loaded")
+        raise HTTPException(503, "model not loaded")
     return {"status": "ready"}
 
 
 @app.get("/meta", response_model=MetaResponse)
-async def meta() -> MetaResponse:
-    """
-    Small metadata surface for the System Status UI.
-    """
+def meta():
     return MetaResponse(
         model_id=MODEL_ID,
         device=DEVICE,
@@ -247,20 +233,22 @@ async def meta() -> MetaResponse:
         max_new_tokens_default=MAX_NEW_TOKENS_DEFAULT,
         temperature_default=TEMPERATURE_DEFAULT,
         ready=_is_ready(),
-        server_version=app.version or "0.1.0",
+        server_version=app.version,
     )
 
 
-# -------- chat endpoints ----------
+# =====================================================================
+# CHAT
+# =====================================================================
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest) -> Dict[str, Any]:
-    global _model, _tok
-    if _model is None or _tok is None:
+async def chat(req: ChatRequest):
+    if _model is None:
         raise HTTPException(503, "model not loaded")
     system = req.system or SYSTEM_PROMPT
     prompt = build_chatml_prompt(_tok, system, req.user)
+
     async with _lock:
         text = await asyncio.get_event_loop().run_in_executor(
             None,
@@ -268,28 +256,25 @@ async def chat(req: ChatRequest) -> Dict[str, Any]:
             _model,
             _tok,
             prompt,
-            int(req.max_new_tokens or MAX_NEW_TOKENS_DEFAULT),
-            float(req.temperature or TEMPERATURE_DEFAULT),
+            req.max_new_tokens or MAX_NEW_TOKENS_DEFAULT,
+            req.temperature or TEMPERATURE_DEFAULT,
         )
     return {"answer": text}
 
 
 @app.post("/v1/chat/completions")
-async def chat_completions(req: OpenAIChatRequest) -> Dict[str, Any]:
-    global _model, _tok
-    if _model is None or _tok is None:
+async def chat_completions(req: OpenAIChatRequest):
+    if _model is None:
         raise HTTPException(503, "model not loaded")
 
     sys = SYSTEM_PROMPT
-    usr_parts: List[str] = []
+    user_text = "\n\n".join([m.content for m in req.messages if m.role == "user"])
     for m in req.messages:
         if m.role == "system":
             sys = m.content
-        elif m.role == "user":
-            usr_parts.append(m.content)
-    user_text = "\n\n".join(usr_parts) if usr_parts else ""
 
     prompt = build_chatml_prompt(_tok, sys, user_text)
+
     async with _lock:
         text = await asyncio.get_event_loop().run_in_executor(
             None,
@@ -297,18 +282,91 @@ async def chat_completions(req: OpenAIChatRequest) -> Dict[str, Any]:
             _model,
             _tok,
             prompt,
-            int(req.max_tokens or MAX_NEW_TOKENS_DEFAULT),
-            float(req.temperature or TEMPERATURE_DEFAULT),
+            req.max_tokens or MAX_NEW_TOKENS_DEFAULT,
+            req.temperature or TEMPERATURE_DEFAULT,
         )
     return {
         "id": "chatcmpl-local",
         "object": "chat.completion",
-        "choices": [
-            {"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}
-        ],
-        "usage": {},
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}}],
     }
 
+
+# =====================================================================
+# LORA JOB MANAGEMENT
+# =====================================================================
+
+JOBS: Dict[str, Dict[str, Any]] = {}
+
+
+class StartLoRARequest(BaseModel):
+    config_path: str  # e.g. "configs/slm/qwen05b_lora_fast_plain.yaml"
+
+
+@app.post("/jobs/train/lora")
+async def start_lora_job(req: StartLoRARequest):
+    job_id = str(uuid.uuid4())
+    root = get_outputs_root()
+
+    output_dir = root / f"lora_job_{job_id}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    script = [
+        "python",
+        "scripts/slm/qwen05b_lora_train.py",
+        "--config",
+        req.config_path,
+    ]
+
+    proc = await asyncio.create_subprocess_exec(
+        *script,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    JOBS[job_id] = {
+        "id": job_id,
+        "status": "running",
+        "output_dir": str(output_dir),
+        "lines": [],
+        "process": proc,
+    }
+
+    async def pump_logs():
+        try:
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").rstrip()
+                JOBS[job_id]["lines"].append(text)
+        finally:
+            rc = await proc.wait()
+            JOBS[job_id]["status"] = "completed" if rc == 0 else "error"
+
+    asyncio.create_task(pump_logs())
+
+    return {"job_id": job_id}
+
+
+@app.get("/jobs/{job_id}")
+async def job_status(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "job not found")
+
+    # Return only safe metadata (not the process object)
+    return {
+        "id": job_id,
+        "status": job["status"],
+        "lines": job["lines"][-200:],  # tail last 200 lines
+        "output_dir": job["output_dir"],
+    }
+
+
+# =====================================================================
+# ARTIFACTS (generic + CV)
+# =====================================================================
 
 # -------- generic artifacts API (/artifacts/*) ----------
 
