@@ -36,7 +36,7 @@ jobs:
           uv venv --python ${{ matrix.python-version }}
           source .venv/bin/activate
           # Install project (default deps) + dev group (pre-commit, black, ruff, isort, nbqa, pytest)
-          uv sync
+          uv sync --all-groups --all-extras
 
       - name: Pre-commit (lint & format)
         run: |
