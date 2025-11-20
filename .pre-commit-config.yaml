@@ -37,11 +37,11 @@ repos:
     hooks:
       - id: isort
         args:
-        - "--settings-path"
-        - "pyproject.toml"
-        - "--profile"
-        - "black"
-        - "--filter-files"
+          - "--settings-path"
+          - "pyproject.toml"
+          - "--profile"
+          - "black"
+          - "--filter-files"
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.5
