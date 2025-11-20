@@ -1,3 +1,5 @@
+# path: scripts/generative/train_ddpm_mini.py
+# ---
 import pathlib
 
 import torch
@@ -20,11 +22,18 @@ def main(
     T: int = 6,
     limit_train: int = 10000,
     out_path: str = "outputs/ddpm_grid.png",
+    ckpt_path: str = "outputs/ddpm_mini.pth",
 ):
+    """
+    Train DDPM-Mini on MNIST and save:
+
+    - A sample grid PNG to `out_path`
+    - A model checkpoint to `ckpt_path` (used by the FastAPI diffusion endpoint)
+    """
     dev = pick_device()
     # Normalize to [-1,1] for diffusion
     tfm = transforms.Compose([transforms.ToTensor(), transforms.Lambda(lambda x: x * 2.0 - 1.0)])
-    ds = datasets.MNIST(root="data", train=True, download=True, transform=tfm)
+    ds = datasets.MNIST(root="data", train=True, download=True, transform=tfm)  # type: ignore[name-defined]
     if limit_train and limit_train < len(ds):
         ds = Subset(ds, range(limit_train))
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -50,12 +59,19 @@ def main(
         if step % 50 == 0:
             typer.echo(f"step {step:04d}  diff_loss={loss.item():.5f}")
 
-    # sample a small grid
+    # sample a small grid & save checkpoint
     with torch.no_grad():
         samples = sample_loop(model, sched, n=16, device=dev).cpu()
-        pathlib.Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        tvutils.save_image(samples, out_path, nrow=4)
-        typer.echo(f"Saved sample grid to: {out_path}")
+        out_p = pathlib.Path(out_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        tvutils.save_image(samples, out_p, nrow=4)
+        typer.echo(f"Saved sample grid to: {out_p}")
+
+        if ckpt_path:
+            ckpt_p = pathlib.Path(ckpt_path)
+            ckpt_p.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(model.state_dict(), ckpt_p)
+            typer.echo(f"Saved DDPM-Mini checkpoint to: {ckpt_p}")
 
 
 if __name__ == "__main__":

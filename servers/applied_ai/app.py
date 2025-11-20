@@ -5,17 +5,28 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import math
 import mimetypes
 import os
+import time
 import uuid
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import torch
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from torchvision import utils as tvutils
+from torchvision.transforms.functional import to_pil_image
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from airoad.generative.ddpm_mini import (  # DDPM-Mini diffusion :contentReference[oaicite:0]{index=0}
+    DiffusionSchedule,
+    TinyUNet,
+    sample_loop,
+)
 
 try:
     from peft import PeftModel
@@ -30,10 +41,15 @@ except Exception:
 
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen2.5-0.5B-Instruct")
 LORA_ADAPTERS_DIR = os.getenv("LORA_ADAPTERS_DIR", "")
-SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "You are a compassionate coach.")
+SYSTEM_PROMPT = os.getenv(
+    "SYSTEM_PROMPT",
+    "You are a compassionate, practical spiritual coach. Be concise, kind, and useful.",
+)
 MAX_NEW_TOKENS_DEFAULT = int(os.getenv("MAX_NEW_TOKENS", "160"))
 TEMPERATURE_DEFAULT = float(os.getenv("TEMPERATURE", "0.2"))
-DEVICE = os.getenv("DEVICE", "cpu")
+DEVICE = os.getenv("DEVICE", "cpu")  # "cpu" | "mps" | "cuda"
+DDPM_T = int(os.getenv("DDPM_T", "6"))
+DDPM_CKPT_NAME = os.getenv("DDPM_MNIST_CKPT", "ddpm_mini.pth")
 
 app = FastAPI(title="Applied AI Server", version="0.2.0")
 
@@ -56,39 +72,50 @@ app.add_middleware(
 )
 
 # =====================================================================
-# UTILITIES — OUTPUTS ROOT & SAFE JOIN
+# OUTPUTS ROOT & PATH HELPERS
 # =====================================================================
 
 
 def get_outputs_root() -> Path:
+    """
+    Resolve the root for all artifacts.
+
+    Priority:
+      1) OUTPUTS_ROOT env
+      2) /app/outputs (container default)
+      3) ./outputs (local dev)
+    """
     env = os.getenv("OUTPUTS_ROOT")
     if env:
         return Path(env).expanduser().resolve()
 
-    cands = [Path("/app/outputs"), Path("outputs")]
-    for c in cands:
+    candidates = [Path("/app/outputs"), Path("outputs")]
+    for c in candidates:
         if c.exists():
             return c.resolve()
-    return cands[0].resolve()
+    return candidates[0].resolve()
 
 
 def _safe_join(root: Path, rel: str) -> Path:
+    """
+    Join a user-provided relative path to root, preventing path traversal.
+    """
     if rel.startswith(("/", "\\")):
-        raise HTTPException(400, "absolute paths not allowed")
-    p = (root / rel).resolve()
+        raise HTTPException(400, detail="absolute paths are not allowed")
+    candidate = (root / rel).resolve()
     root = root.resolve()
-    if p == root or root in p.parents:
-        return p
-    raise HTTPException(400, "invalid path")
+    if candidate == root or root in candidate.parents:
+        return candidate
+    raise HTTPException(400, detail="invalid path")
 
 
 # =====================================================================
-# MODEL LOADING
+# LLM MODEL LOADING
 # =====================================================================
 
 _model = None
 _tok = None
-_lock = asyncio.Lock()
+_lock = asyncio.Lock()  # LLM concurrency guard
 
 
 def _load_base(model_id: str):
@@ -101,28 +128,28 @@ def _load_base(model_id: str):
 
 def _load_base_plus_lora(model_id: str, lora_dir: str):
     if not _HAS_PEFT:
-        raise RuntimeError("peft not installed")
+        raise RuntimeError("peft not installed; cannot load LoRA adapters")
     model, tok = _load_base(model_id)
     model = PeftModel.from_pretrained(model, lora_dir)
     return model, tok
 
 
 def build_chatml_prompt(tok, system: str, user: str) -> str:
-    msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    return tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
 
 def generate_once(model, tok, prompt: str, max_new_tokens: int, temperature: float) -> str:
     enc = tok(prompt, return_tensors="pt")
-    inp = enc["input_ids"].to(DEVICE)
-    att = enc.get("attention_mask", None)
-    if att is not None:
-        att = att.to(DEVICE)
+    input_ids = enc["input_ids"].to(DEVICE)
+    attn = enc.get("attention_mask", None)
+    if attn is not None:
+        attn = attn.to(DEVICE)
 
     with torch.no_grad():
         out = model.generate(
-            input_ids=inp,
-            attention_mask=att,
+            input_ids=input_ids,
+            attention_mask=attn,
             max_new_tokens=max_new_tokens,
             do_sample=(temperature > 0.0),
             temperature=temperature,
@@ -130,9 +157,8 @@ def generate_once(model, tok, prompt: str, max_new_tokens: int, temperature: flo
             pad_token_id=tok.pad_token_id,
             eos_token_id=tok.eos_token_id,
         )
-
-    txt = tok.decode(out[0], skip_special_tokens=True)
-    return txt.split("</s>")[-1].strip() if "</s>" in txt else txt.strip()
+    text = tok.decode(out[0], skip_special_tokens=True)
+    return text.split("</s>")[-1].strip() if "</s>" in text else text.strip()
 
 
 def _is_ready() -> bool:
@@ -151,15 +177,45 @@ def startup_event():
 
 
 # =====================================================================
+# DDPM-MINI (MNIST DIFFUSION) STATE
+# =====================================================================
+
+_ddpm_model: Optional[TinyUNet] = None
+_ddpm_sched: Optional[DiffusionSchedule] = None
+_ddpm_device: Optional[str] = None
+_ddpm_lock = asyncio.Lock()
+
+
+def _ensure_ddpm_loaded() -> None:
+    """Lazy-load DDPM-Mini model and schedule on first use."""
+    global _ddpm_model, _ddpm_sched, _ddpm_device
+    if _ddpm_model is not None and _ddpm_sched is not None:
+        return
+
+    dev = DEVICE  # reuse same device policy as LLM
+    _ddpm_device = dev
+    _ddpm_sched = DiffusionSchedule(T=DDPM_T, device=dev)
+    model = TinyUNet(base_c=32, with_t_embed=True, T_max=DDPM_T)
+    model.to(dev).eval()
+
+    # Optional checkpoint: outputs/ddpm_mini.pth relative to outputs root
+    ckpt_path = get_outputs_root() / DDPM_CKPT_NAME
+    if ckpt_path.exists():
+        state = torch.load(ckpt_path, map_location=dev)
+        model.load_state_dict(state)
+    _ddpm_model = model
+
+
+# =====================================================================
 # SCHEMAS
 # =====================================================================
 
 
 class ChatRequest(BaseModel):
-    user: str
-    system: Optional[str]
-    max_new_tokens: Optional[int]
-    temperature: Optional[float]
+    user: str = Field(..., description="User message content")
+    system: Optional[str] = Field(None, description="Optional system override")
+    max_new_tokens: Optional[int] = Field(None, ge=1, le=2048)
+    temperature: Optional[float] = Field(None, ge=0.0, le=1.5)
 
 
 class OpenAIMessage(BaseModel):
@@ -168,10 +224,10 @@ class OpenAIMessage(BaseModel):
 
 
 class OpenAIChatRequest(BaseModel):
-    model: Optional[str]
+    model: Optional[str] = None
     messages: List[OpenAIMessage]
-    temperature: Optional[float]
-    max_tokens: Optional[int]
+    temperature: Optional[float] = 0.2
+    max_tokens: Optional[int] = 160
 
 
 class MetaResponse(BaseModel):
@@ -188,7 +244,7 @@ class MetaResponse(BaseModel):
 
 class ArtifactItem(BaseModel):
     name: str
-    path: str
+    path: str  # relative to outputs root
     type: Literal["dir", "file"]
 
 
@@ -205,25 +261,44 @@ class CVArtifactPreview(BaseModel):
     content: str
 
 
+class StartLoRARequest(BaseModel):
+    config_path: str
+
+
+class DDPMSampleRequest(BaseModel):
+    n: int = Field(16, ge=1, le=64, description="Number of samples to draw")
+    nrow: Optional[int] = Field(
+        None, ge=1, le=64, description="Grid columns (defaults to sqrt(n) rounded)"
+    )
+    seed: Optional[int] = Field(None, description="Optional torch.manual_seed for reproducibility")
+
+
+class DDPMSampleResponse(BaseModel):
+    image: str  # data URL: data:image/png;base64,...
+    n: int
+    T: int
+    out_path: Optional[str] = None  # relative to outputs root (for Runs browser)
+
+
 # =====================================================================
 # HEALTH / META
 # =====================================================================
 
 
 @app.get("/healthz")
-def healthz():
+def healthz() -> Dict[str, str]:
     return {"status": "ok"}
 
 
 @app.get("/readyz")
-def readyz():
+def readyz() -> Dict[str, str]:
     if not _is_ready():
         raise HTTPException(503, "model not loaded")
     return {"status": "ready"}
 
 
 @app.get("/meta", response_model=MetaResponse)
-def meta():
+def meta() -> MetaResponse:
     return MetaResponse(
         model_id=MODEL_ID,
         device=DEVICE,
@@ -233,7 +308,7 @@ def meta():
         max_new_tokens_default=MAX_NEW_TOKENS_DEFAULT,
         temperature_default=TEMPERATURE_DEFAULT,
         ready=_is_ready(),
-        server_version=app.version,
+        server_version=app.version or "0.1.0",
     )
 
 
@@ -243,8 +318,8 @@ def meta():
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
-    if _model is None:
+async def chat(req: ChatRequest) -> Dict[str, Any]:
+    if _model is None or _tok is None:
         raise HTTPException(503, "model not loaded")
     system = req.system or SYSTEM_PROMPT
     prompt = build_chatml_prompt(_tok, system, req.user)
@@ -256,25 +331,27 @@ async def chat(req: ChatRequest):
             _model,
             _tok,
             prompt,
-            req.max_new_tokens or MAX_NEW_TOKENS_DEFAULT,
-            req.temperature or TEMPERATURE_DEFAULT,
+            int(req.max_new_tokens or MAX_NEW_TOKENS_DEFAULT),
+            float(req.temperature or TEMPERATURE_DEFAULT),
         )
     return {"answer": text}
 
 
 @app.post("/v1/chat/completions")
-async def chat_completions(req: OpenAIChatRequest):
-    if _model is None:
+async def chat_completions(req: OpenAIChatRequest) -> Dict[str, Any]:
+    if _model is None or _tok is None:
         raise HTTPException(503, "model not loaded")
 
     sys = SYSTEM_PROMPT
-    user_text = "\n\n".join([m.content for m in req.messages if m.role == "user"])
+    usr_parts: List[str] = []
     for m in req.messages:
         if m.role == "system":
             sys = m.content
+        elif m.role == "user":
+            usr_parts.append(m.content)
+    user_text = "\n\n".join(usr_parts) if usr_parts else ""
 
     prompt = build_chatml_prompt(_tok, sys, user_text)
-
     async with _lock:
         text = await asyncio.get_event_loop().run_in_executor(
             None,
@@ -282,13 +359,16 @@ async def chat_completions(req: OpenAIChatRequest):
             _model,
             _tok,
             prompt,
-            req.max_tokens or MAX_NEW_TOKENS_DEFAULT,
-            req.temperature or TEMPERATURE_DEFAULT,
+            int(req.max_tokens or MAX_NEW_TOKENS_DEFAULT),
+            float(req.temperature or TEMPERATURE_DEFAULT),
         )
     return {
         "id": "chatcmpl-local",
         "object": "chat.completion",
-        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}}],
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}
+        ],
+        "usage": {},
     }
 
 
@@ -299,15 +379,15 @@ async def chat_completions(req: OpenAIChatRequest):
 JOBS: Dict[str, Dict[str, Any]] = {}
 
 
-class StartLoRARequest(BaseModel):
-    config_path: str  # e.g. "configs/slm/qwen05b_lora_fast_plain.yaml"
-
-
 @app.post("/jobs/train/lora")
-async def start_lora_job(req: StartLoRARequest):
+async def start_lora_job(req: StartLoRARequest) -> Dict[str, str]:
+    """
+    Launch a LoRA training job as a background subprocess.
+
+    Uses scripts/slm/qwen05b_lora_train.py with the given config path.
+    """
     job_id = str(uuid.uuid4())
     root = get_outputs_root()
-
     output_dir = root / f"lora_job_{job_id}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -350,32 +430,28 @@ async def start_lora_job(req: StartLoRARequest):
 
 
 @app.get("/jobs/{job_id}")
-async def job_status(job_id: str):
+async def job_status(job_id: str) -> Dict[str, Any]:
     job = JOBS.get(job_id)
     if not job:
         raise HTTPException(404, "job not found")
-
-    # Return only safe metadata (not the process object)
     return {
         "id": job_id,
         "status": job["status"],
-        "lines": job["lines"][-200:],  # tail last 200 lines
+        "lines": job["lines"][-200:],  # tail
         "output_dir": job["output_dir"],
     }
 
 
 # =====================================================================
-# ARTIFACTS (generic + CV)
+# GENERIC ARTIFACTS API (/artifacts/*)
 # =====================================================================
-
-# -------- generic artifacts API (/artifacts/*) ----------
 
 
 @app.get("/artifacts/list", response_model=ArtifactListResponse)
 async def list_artifacts(
     path: Optional[str] = Query(
         default=None,
-        description="Optional relative subdirectory under outputs/ to list. If omitted, list top-level.",
+        description="Optional relative subdirectory under outputs/ to list.",
     )
 ) -> ArtifactListResponse:
     root = get_outputs_root()
@@ -406,25 +482,18 @@ async def read_artifact(
     try:
         text = full.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        # Fallback: binary or non-UTF8; just show a small hint.
         stat = full.stat()
         text = f"[binary file] {full.name} ({stat.st_size} bytes)"
 
     return ArtifactFileResponse(content=text)
 
 
-# -------- CV artifacts API (/cv/*) ----------
+# =====================================================================
+# CV ARTIFACTS API (/cv/*)
+# =====================================================================
 
 
 def _collect_cv_files(root: Path, max_items: int = 512) -> List[Path]:
-    """
-    Scan outputs/cv and outputs/cv_images for interesting artifacts.
-
-    We include:
-      - annotated images (*.png/jpg/jpeg/webp)
-      - JSON/CSV summaries and detections
-      - logs
-    """
     img_exts = {".png", ".jpg", ".jpeg", ".webp"}
     text_exts = {".json", ".csv", ".log", ".txt"}
     interesting_exts = img_exts | text_exts
@@ -445,9 +514,6 @@ def _collect_cv_files(root: Path, max_items: int = 512) -> List[Path]:
 
 @app.get("/cv/artifacts", response_model=ArtifactListResponse)
 async def list_cv_artifacts() -> ArtifactListResponse:
-    """
-    List a flattened set of "interesting" CV artifacts under outputs/cv and outputs/cv_images.
-    """
     root = get_outputs_root()
     files = _collect_cv_files(root)
     items: List[ArtifactItem] = []
@@ -484,7 +550,59 @@ async def cv_artifact(
         text = full.read_text(encoding="utf-8", errors="replace")
         return CVArtifactPreview(kind="text", content=text)
 
-    # Fallback for other binary blobs (e.g., mp4)
     stat = full.stat()
     msg = f"[binary file] {full.name} ({stat.st_size} bytes)"
     return CVArtifactPreview(kind="bin", content=msg)
+
+
+# =====================================================================
+# DIFFUSION API (DDPM-MINI → MNIST GRID)
+# =====================================================================
+
+
+@app.post("/diffusion/mnist/sample", response_model=DDPMSampleResponse)
+async def diffusion_mnist_sample(req: DDPMSampleRequest) -> DDPMSampleResponse:
+    """
+    Sample a tiny MNIST grid from the DDPM-Mini model.
+
+    Returns:
+      - image: data:image/png;base64,... grid
+      - out_path: relative PNG path under outputs/ for the Runs browser
+    """
+    async with _ddpm_lock:
+        _ensure_ddpm_loaded()
+        if _ddpm_model is None or _ddpm_sched is None:
+            raise HTTPException(500, "DDPM model failed to load")
+
+        if req.seed is not None:
+            torch.manual_seed(req.seed)
+
+        n = req.n
+        nrow = req.nrow or max(1, int(math.sqrt(n)))
+        dev = _ddpm_device or DEVICE
+
+        samples = sample_loop(_ddpm_model, _ddpm_sched, n=n, device=dev).cpu()
+        grid = tvutils.make_grid(samples, nrow=nrow, padding=2)
+        pil = to_pil_image(grid)
+
+        # Encode as data URL
+        buf = BytesIO()
+        pil.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        data_url = f"data:image/png;base64,{b64}"
+
+        # Save under outputs/diffusion/ddpm_mini for later browsing
+        out_root = get_outputs_root()
+        out_dir = out_root / "diffusion" / "ddpm_mini"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        ts = int(time.time())
+        out_path = out_dir / f"mnist_grid_{ts}.png"
+        pil.save(out_path)
+        rel = out_path.relative_to(out_root).as_posix()
+
+        return DDPMSampleResponse(
+            image=data_url,
+            n=n,
+            T=_ddpm_sched.T,
+            out_path=rel,
+        )
