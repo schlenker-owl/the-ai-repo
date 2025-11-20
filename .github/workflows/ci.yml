@@ -41,7 +41,7 @@ jobs:
       - name: Pre-commit (lint & format)
         run: |
           source .venv/bin/activate
-          uv run pre-commit run -a
+          uv run pre-commit run -a --show-diff-on-failure
 
       - name: Run tests
         run: |
