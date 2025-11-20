@@ -75,3 +75,13 @@ airoad = ["py.typed"]
 [tool.uv]
 # put the virtualenv inside the repo (nice for CI and isolation)
 package = true
+
+# --- isort configuration (shared by local + CI) ---
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+include_trailing_comma = true
+combine_as_imports = true
+src_paths = ["src", "scripts"]
+known_first_party = ["airoad"]

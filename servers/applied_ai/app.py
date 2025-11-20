@@ -20,13 +20,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from torchvision import utils as tvutils
 from torchvision.transforms.functional import to_pil_image
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from airoad.generative.ddpm_mini import (  # DDPM-Mini diffusion :contentReference[oaicite:0]{index=0}
     DiffusionSchedule,
     TinyUNet,
     sample_loop,
 )
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 try:
     from peft import PeftModel

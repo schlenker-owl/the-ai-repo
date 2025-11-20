@@ -94,7 +94,12 @@ def run_lora_sft(cfg: SFTConfig) -> None:
     Requires: transformers, peft; optionally trl.
     """
     try:
-        from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+        from transformers import (
+            AutoModelForCausalLM,
+            AutoTokenizer,
+            Trainer,
+            TrainingArguments,
+        )
     except Exception as e:
         raise RuntimeError("Transformers required: pip install transformers") from e
 

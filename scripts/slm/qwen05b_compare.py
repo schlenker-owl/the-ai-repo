@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import List
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from airoad.core import pick_device
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 try:
     from peft import PeftModel

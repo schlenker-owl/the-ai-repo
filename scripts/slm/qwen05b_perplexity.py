@@ -8,9 +8,9 @@ from pathlib import Path
 
 import torch
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from airoad.core import pick_device
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 TPL = "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:\n{output}"
 

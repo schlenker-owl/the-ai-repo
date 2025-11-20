@@ -4,9 +4,9 @@ from __future__ import annotations
 import argparse
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from airoad.core import pick_device
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 try:
     from peft import PeftModel

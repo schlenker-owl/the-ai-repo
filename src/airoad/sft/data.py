@@ -6,9 +6,9 @@ import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from transformers import PreTrainedTokenizerBase
-
 from datasets import Dataset as HFDataset
+
+from transformers import PreTrainedTokenizerBase
 
 """
 src/airoad/sft/data.py

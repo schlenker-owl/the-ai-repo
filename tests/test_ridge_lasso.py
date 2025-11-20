@@ -1,6 +1,10 @@
 import numpy as np
 
-from airoad.classic.linear.ridge_lasso import lasso_coordinate_descent, ridge_closed_form, ridge_gd
+from airoad.classic.linear.ridge_lasso import (
+    lasso_coordinate_descent,
+    ridge_closed_form,
+    ridge_gd,
+)
 
 
 def test_ridge_closed_form_vs_gd():

@@ -5,10 +5,14 @@ import pathlib
 import torch
 import typer
 from torch.utils.data import DataLoader, Subset
-from torchvision import datasets, transforms
-from torchvision import utils as tvutils
+from torchvision import datasets, transforms, utils as tvutils
 
-from airoad.generative.ddpm_mini import DiffusionSchedule, TinyUNet, diffusion_loss, sample_loop
+from airoad.generative.ddpm_mini import (
+    DiffusionSchedule,
+    TinyUNet,
+    diffusion_loss,
+    sample_loop,
+)
 from airoad.utils.device import pick_device
 
 app = typer.Typer(add_completion=False)

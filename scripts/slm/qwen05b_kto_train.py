@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Dict
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback
 
 from airoad.core import pick_device, seed_everything
 from airoad.sft.callbacks import (
@@ -22,6 +21,7 @@ from airoad.sft.data import ensure_tok
 from airoad.sft.lora import apply_lora
 from airoad.sft.pref_data import build_kto_dataset
 from airoad.sft.pref_trainers import build_kto_trainer
+from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback
 
 """
 Slim KTO training CLI for Qwen-0.5B (LoRA/DoRA compatible).

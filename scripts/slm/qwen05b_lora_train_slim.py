@@ -11,12 +11,6 @@ from pathlib import Path
 from typing import Any, Dict
 
 import torch
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    EarlyStoppingCallback,
-    TrainingArguments,
-)
 
 from airoad.core import pick_device, seed_everything
 from airoad.sft.callbacks import (
@@ -27,7 +21,17 @@ from airoad.sft.callbacks import (
 )
 from airoad.sft.data import ensure_tok, prepare_datasets
 from airoad.sft.lora import apply_lora
-from airoad.sft.trainers import SFTConfig, build_hf_trainer, build_trl_trainer  # type: ignore
+from airoad.sft.trainers import (  # type: ignore
+    SFTConfig,
+    build_hf_trainer,
+    build_trl_trainer,
+)
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    EarlyStoppingCallback,
+    TrainingArguments,
+)
 
 try:
     from trl import SFTConfig as TRL_SFTConfig  # type: ignore

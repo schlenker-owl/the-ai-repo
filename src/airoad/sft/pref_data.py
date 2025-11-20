@@ -7,9 +7,9 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
 
-from transformers import PreTrainedTokenizerBase
-
 from datasets import Dataset as HFDataset
+
+from transformers import PreTrainedTokenizerBase
 
 """
 src/airoad/sft/pref_data.py

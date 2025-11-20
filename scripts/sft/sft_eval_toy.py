@@ -3,7 +3,13 @@ from typing import List, Tuple
 import typer
 
 from airoad.sft.eval_sft import evaluate_pairs
-from airoad.sft.infer import GenConfig, generate, load_base, load_with_lora, merge_and_save_lora
+from airoad.sft.infer import (
+    GenConfig,
+    generate,
+    load_base,
+    load_with_lora,
+    merge_and_save_lora,
+)
 from airoad.sft.lora_sft import build_alpaca_like_examples, format_example
 
 app = typer.Typer(add_completion=False)

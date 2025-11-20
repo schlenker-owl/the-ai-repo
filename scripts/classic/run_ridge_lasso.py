@@ -1,7 +1,11 @@
 import numpy as np
 import typer
 
-from airoad.classic.linear.ridge_lasso import lasso_coordinate_descent, ridge_closed_form, ridge_gd
+from airoad.classic.linear.ridge_lasso import (
+    lasso_coordinate_descent,
+    ridge_closed_form,
+    ridge_gd,
+)
 
 app = typer.Typer(add_completion=False)
 
