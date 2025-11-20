@@ -1,4 +1,5 @@
-# src/airoad/unsupervised/kmeans.py
+# path: src/airoad/unsupervised/kmeans.py
+# ---
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,6 +22,10 @@ def _pairwise_sq_dists(X: np.ndarray, C: np.ndarray) -> np.ndarray:
 def _kmeans_plus_plus_init(X: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
     """
     k-means++ initialization.
+
+    NOTE: due to floating-point roundoff in squared distances, we explicitly
+    clamp distances/probabilities to be non-negative before using them as
+    sampling weights to keep rng.choice happy on all platforms.
     """
     n, d = X.shape
     C = np.empty((k, d), dtype=np.float64)
@@ -31,17 +36,35 @@ def _kmeans_plus_plus_init(X: np.ndarray, k: int, rng: np.random.Generator) -> n
 
     # 2) Subsequent centers proportional to squared distance to nearest chosen center
     D = _pairwise_sq_dists(X, C[0:1]).ravel()  # distances to first center
+    # Clamp tiny negative noise that can arise from numerical cancellation
+    D = np.clip(D, 0.0, None)
+
     for j in range(1, k):
-        total = D.sum()
+        # Make sure our weights are valid before turning them into probabilities
+        D = np.clip(D, 0.0, None)
+        total = float(D.sum())
+
         if not np.isfinite(total) or total <= 0.0:
-            # Degenerate case (duplicates, all points equal to a center) — pick random
-            idx = rng.integers(0, n)
+            # Degenerate case (duplicates, all points equal, or numeric issues) — pick random
+            idx = int(rng.integers(0, n))
         else:
             probs = D / total
-            idx = rng.choice(n, p=probs)
+            # Extra safety: clip again and renormalize to avoid tiny negatives or drift
+            probs = np.clip(probs, 0.0, None)
+            s = float(probs.sum())
+            if not np.isfinite(s) or s <= 0.0:
+                idx = int(rng.integers(0, n))
+            else:
+                probs /= s
+                idx = int(rng.choice(n, p=probs))
+
         C[j] = X[idx]
-        # update D to nearest chosen center so far
-        D = np.minimum(D, _pairwise_sq_dists(X, C[j : j + 1]).ravel())
+
+        # Update D to nearest chosen center so far (and clamp to avoid negatives)
+        new_D = _pairwise_sq_dists(X, C[j : j + 1]).ravel()
+        new_D = np.clip(new_D, 0.0, None)
+        D = np.minimum(D, new_D)
+
     return C
 
 
