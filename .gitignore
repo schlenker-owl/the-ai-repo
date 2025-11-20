@@ -11,3 +11,5 @@ runs/
 tmp/
 checkpoints/
 ckpts_tinygpt/
+# Packaging artifacts
+*.egg-info/
